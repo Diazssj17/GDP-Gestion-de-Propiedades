@@ -24,7 +24,6 @@ export default function UnidadesScreen({ route }) {
   return (
     <View style={[s.container, { backgroundColor: c.background }]}>
       <Text style={[s.header, { color: c.text }]}>{nombre || 'Unidades'}</Text>
-      <Text style={[s.sub, { color: c.textSecondary }]}>Unidad = mínima arrendable. Contrato 1 activo por unidad.</Text>
       <FlatList
         data={data}
         keyExtractor={i => String(i.id)}

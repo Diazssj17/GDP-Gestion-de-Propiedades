@@ -19,7 +19,6 @@ export default function PropiedadesScreen({ navigation }) {
   return (
     <View style={[s.container, { backgroundColor: c.background }]}>
       <Text style={[s.header, { color: c.text }]}>Propiedades</Text>
-      <Text style={[s.sub, { color: c.textSecondary }]}>Cada propiedad agrupa N unidades. Casa = 1 unidad.</Text>
       <FlatList
         data={data}
         keyExtractor={i => String(i.id)}

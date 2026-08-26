@@ -97,7 +97,6 @@ export default function NuevoContratoScreen({ navigation }) {
   return (
     <ScrollView style={[s.container, { backgroundColor: c.background }]} contentContainerStyle={{ paddingBottom: 40 }}>
       <Text style={[s.title, { color: c.text }]}>Nuevo contrato</Text>
-      <Text style={[s.sub, { color: c.textSecondary }]}>Unidad ↔ Inquilino · 1 contrato activo por unidad</Text>
 
       <Picker label="Propiedad" value={propiedadId} options={propiedades} onSelect={(id) => { setPropiedadId(id); setUnidadId(null); }} />
       <Picker label="Unidad (disponible)" value={unidadId} options={disponibles} onSelect={setUnidadId} labelKey="codigo" placeholder={disponibles.length ? 'Seleccionar unidad...' : 'Sin unidades disponibles'} />

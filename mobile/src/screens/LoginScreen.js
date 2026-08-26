@@ -34,7 +34,6 @@ export default function LoginScreen() {
       <View style={s.body}>
         <View style={[s.logo, { backgroundColor: c.primary }]}><Text style={s.logoText}>GDP</Text></View>
         <Text style={[s.title, { color: c.text }]}>Gestión de Propiedades</Text>
-        <Text style={[s.subtitle, { color: c.textSecondary }]}>Propietario · Propiedad · Unidad · Contrato · Pagos</Text>
 
         <TextInput
           style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]}
@@ -71,7 +70,6 @@ const s = StyleSheet.create({
   logo: { width: 72, height: 72, borderRadius: 18, alignSelf: 'center', justifyContent: 'center', alignItems: 'center' },
   logoText: { color: '#fff', fontSize: 28, fontWeight: '900', letterSpacing: 1 },
   title: { fontSize: 26, fontWeight: '900', textAlign: 'center', marginTop: 16 },
-  subtitle: { fontSize: 12, textAlign: 'center', marginTop: 6, marginBottom: 28 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, marginBottom: 12 },
   error: { color: '#DC2626', fontSize: 13, marginBottom: 8, textAlign: 'center' },
   btn: { borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginTop: 4 },

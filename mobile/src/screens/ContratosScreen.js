@@ -67,7 +67,6 @@ export default function ContratosScreen({ navigation }) {
   return (
     <View style={[s.container, { backgroundColor: c.background }]}>
       <Text style={[s.header, { color: c.text }]}>Contratos</Text>
-      <Text style={[s.sub, { color: c.textSecondary }]}>Unidad ↔ Inquilino · renueva o termina con los botones</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filtersScroll} contentContainerStyle={s.filters}>
         {FILTROS.map(e => (
           <TouchableOpacity key={e || 'todos'} onPress={() => { setFiltro(e); load(e); }} style={[s.chip, { backgroundColor: c.card, borderColor: c.border }, filtro === e && { backgroundColor: c.chipActive, borderColor: c.chipActive }]}>
