@@ -889,11 +889,24 @@ def actualizar_recibo(recibo_id):
     user = require_auth()
     if not user:
         return jsonify({"error": "No autenticado"}), 401
-    if user["rol"] not in ("superadmin", "propietario"):
-        return jsonify({"error": "No autorizado"}), 403
     recibo = query_one("SELECT * FROM recibos WHERE id=?", (recibo_id,))
     if not recibo:
         return jsonify({"error": "Recibo no existe"}), 404
+    if user["rol"] == "inquilino":
+        # El inquilino solo puede marcar recibos distribuidos a su unidad (no crear/editar mas)
+        inq = query_one("SELECT id FROM inquilinos WHERE usuario_id=?", (user["id"],))
+        if not inq:
+            return jsonify({"error": "No autorizado"}), 403
+        tiene = query_one("""
+            SELECT 1 FROM distribucion_servicios d
+            JOIN unidades u ON u.id = d.unidad_id
+            JOIN contratos c ON c.unidad_id = u.id
+            WHERE d.recibo_id=? AND c.inquilino_id=? AND c.estado='activo'
+        """, (recibo_id, inq["id"]))
+        if not tiene:
+            return jsonify({"error": "No autorizado"}), 403
+    elif user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
     data = request.get_json(silent=True) or {}
     estado = data.get("estado")
     if estado not in ("pendiente", "pagado", "vencido", "parcial"):

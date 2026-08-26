@@ -3,6 +3,7 @@ import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, 
 import { Ionicons } from '@expo/vector-icons';
 import { api, BASE_URL } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
+import { useAuth } from '../auth/AuthContext';
 
 const estadoColor = { pendiente: '#EA580C', pagado: '#059669', vencido: '#DC2626', parcial: '#D97706' };
 const ESTADO_LABEL = { pendiente: 'Espera', vencido: 'Mora', pagado: 'Pagado', parcial: 'Parcial' };
@@ -11,7 +12,9 @@ const ESTADOS_MARK = ['pendiente', 'vencido', 'pagado', 'parcial'];
 
 export default function ServiciosScreen({ navigation }) {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const c = theme.colors;
+  const esInquilino = user?.rol === 'inquilino';
   const [filtro, setFiltro] = useState('');
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -81,9 +84,11 @@ export default function ServiciosScreen({ navigation }) {
           )}
         />
       )}
-      <TouchableOpacity style={[s.fab, { backgroundColor: c.primary }]} onPress={() => navigation.navigate('NuevoRecibo')}>
-        <Ionicons name="add" size={28} color="#fff" />
-      </TouchableOpacity>
+      {!esInquilino && (
+        <TouchableOpacity style={[s.fab, { backgroundColor: c.primary }]} onPress={() => navigation.navigate('NuevoRecibo')}>
+          <Ionicons name="add" size={28} color="#fff" />
+        </TouchableOpacity>
+      )}
 
       <Modal visible={!!marcar} transparent animationType="slide">
         <View style={s.overlay}>

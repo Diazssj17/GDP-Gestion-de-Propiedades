@@ -3,6 +3,7 @@ import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, 
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
+import { useAuth } from '../auth/AuthContext';
 
 const colors = { pendiente: '#EA580C', pagado: '#059669', mora: '#DC2626', parcial: '#D97706', vencido: '#7C3AED' };
 const METODOS = ['efectivo', 'transferencia', 'consignacion', 'pse', 'otro'];
@@ -10,7 +11,9 @@ const METODO_LABEL = { efectivo: 'Efectivo', transferencia: 'Transferencia', con
 
 export default function PagosScreen({ navigation }) {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const c = theme.colors;
+  const esInquilino = user?.rol === 'inquilino';
   const [filtro, setFiltro] = useState('');
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -123,7 +126,7 @@ export default function PagosScreen({ navigation }) {
 
               <View style={s.modalBtns}>
                 <TouchableOpacity style={[s.btn, s.cancel, { borderColor: c.border }]} onPress={() => setDetalle(null)}><Text style={{ color: c.textSecondary }}>Cerrar</Text></TouchableOpacity>
-                {detalle && esAbonable(detalle) ? (
+                {!esInquilino && detalle && esAbonable(detalle) ? (
                   <TouchableOpacity style={[s.btn, { backgroundColor: c.primary }]} onPress={() => abrirAbonar(detalle)}><Text style={s.btnText}>Abonar</Text></TouchableOpacity>
                 ) : null}
               </View>

@@ -3,6 +3,7 @@ import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, 
 import { Ionicons } from '@expo/vector-icons';
 import { api, BASE_URL } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
+import { useAuth } from '../auth/AuthContext';
 
 const estadoColor = { reportado: '#EA580C', pendiente: '#EA580C', en_revision: '#D97706', en_proceso: '#2563EB', resuelto: '#059669', cancelado: '#64748B' };
 const prioridadColor = { baja: '#059669', media: '#D97706', alta: '#EA580C', critica: '#DC2626' };
@@ -11,7 +12,9 @@ const ESTADO_LABEL = { reportado: 'Reportado', pendiente: 'Pendiente', en_revisi
 
 export default function MantenimientoScreen({ navigation }) {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const c = theme.colors;
+  const esInquilino = user?.rol === 'inquilino';
   const [filtro, setFiltro] = useState('');
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -60,7 +63,7 @@ export default function MantenimientoScreen({ navigation }) {
           contentContainerStyle={{ paddingBottom: 90 }}
           ListEmptyComponent={<Text style={[s.empty, { color: c.textMuted }]}>Sin tickets en este filtro.</Text>}
           renderItem={({ item }) => (
-            <TouchableOpacity style={[s.card, { backgroundColor: c.card }]} onPress={() => abrirEstado(item)} activeOpacity={0.8}>
+            <TouchableOpacity style={[s.card, { backgroundColor: c.card }]} onPress={() => !esInquilino && abrirEstado(item)} activeOpacity={0.8}>
               <View style={s.row}>
                 <View style={{ flex: 1 }}>
                   <Text style={[s.title, { color: c.text }]}>{item.titulo}</Text>
@@ -82,7 +85,7 @@ export default function MantenimientoScreen({ navigation }) {
                   {fotosDe(item).map((f, i) => <Image key={i} source={{ uri: fotoUrl(f) }} style={s.foto} resizeMode="cover" />)}
                 </View>
               ) : null}
-              <Text style={[s.link, { color: c.accent }]}>Cambiar estado →</Text>
+              {!esInquilino && <Text style={[s.link, { color: c.accent }]}>Cambiar estado →</Text>}
             </TouchableOpacity>
           )}
         />
