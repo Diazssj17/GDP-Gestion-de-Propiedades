@@ -68,7 +68,7 @@ export default function ContratosScreen({ navigation }) {
     <View style={[s.container, { backgroundColor: c.background }]}>
       <Text style={[s.header, { color: c.text }]}>Contratos</Text>
       <Text style={[s.sub, { color: c.textSecondary }]}>Unidad ↔ Inquilino · renueva o termina con los botones</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filtersScroll} contentContainerStyle={s.filters}>
         {FILTROS.map(e => (
           <TouchableOpacity key={e || 'todos'} onPress={() => { setFiltro(e); load(e); }} style={[s.chip, { backgroundColor: c.card, borderColor: c.border }, filtro === e && { backgroundColor: c.chipActive, borderColor: c.chipActive }]}>
             <Text style={[s.chipText, { color: filtro === e ? c.chipTextActive : c.textSecondary }]}>{e ? ESTADO_LABEL[e] || e : 'todos'}</Text>
@@ -148,7 +148,8 @@ const s = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { fontSize: 20, fontWeight: '800' },
   sub: { fontSize: 12, marginBottom: 8 },
-  filters: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 12, paddingBottom: 12 },
+  filtersScroll: { flexGrow: 0, marginBottom: 12 },
+  filters: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 8 },
   chip: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, height: 32, justifyContent: 'center', alignItems: 'center' },
   chipText: { fontSize: 12, textTransform: 'capitalize' },
   card: { borderRadius: 12, padding: 14, marginBottom: 10 },
