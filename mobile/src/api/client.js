@@ -36,6 +36,9 @@ export const api = {
   registrarPago: (id, data) => client.patch(`/api/pagos/${id}`, data).then(r => r.data),
   alertas: () => client.get('/api/alertas').then(r => r.data),
   servicios: () => client.get('/api/servicios').then(r => r.data),
+  mantenimientos: (params = {}) => client.get('/api/mantenimientos', { params }).then(r => r.data),
+  crearMantenimiento: (data) => client.post('/api/mantenimientos', data).then(r => r.data),
+  actualizarMantenimiento: (id, data) => client.patch(`/api/mantenimientos/${id}`, data).then(r => r.data),
   recibos: (params = {}) => client.get('/api/recibos', { params }).then(r => r.data),
   crearRecibo: (data) => client.post('/api/recibos', data).then(r => r.data),
 };

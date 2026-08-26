@@ -16,6 +16,7 @@ import NuevoPagoScreen from '../screens/NuevoPagoScreen';
 import ServiciosScreen from '../screens/ServiciosScreen';
 import NuevoReciboScreen from '../screens/NuevoReciboScreen';
 import MantenimientoScreen from '../screens/MantenimientoScreen';
+import NuevoMantenimientoScreen from '../screens/NuevoMantenimientoScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -60,6 +61,16 @@ function PagosStack() {
   );
 }
 
+function MantenimientoStack() {
+  const { theme } = useTheme();
+  return (
+    <Stack.Navigator>
+      <Stack.Screen name="MantenimientoList" component={MantenimientoScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="NuevoMantenimiento" component={NuevoMantenimientoScreen} options={{ title: 'Nuevo ticket', headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerRight: () => <HeaderRight /> }} />
+    </Stack.Navigator>
+  );
+}
+
 export default function AppNavigator() {
   const { theme } = useTheme();
   const navTheme = { ...(theme.dark ? DarkTheme : DefaultTheme), colors: { ...(theme.dark ? DarkTheme : DefaultTheme).colors, primary: theme.colors.accent, background: theme.colors.background, card: theme.colors.card, text: theme.colors.text, border: theme.colors.border } };
@@ -86,7 +97,7 @@ export default function AppNavigator() {
         <Tab.Screen name="Contratos" component={ContratosStack} options={{ headerShown: false }} />
         <Tab.Screen name="Pagos" component={PagosStack} options={{ headerShown: false }} />
         <Tab.Screen name="Servicios" component={ServiciosStack} options={{ headerShown: false }} />
-        <Tab.Screen name="Mantenimiento" component={MantenimientoScreen} />
+        <Tab.Screen name="Mantenimiento" component={MantenimientoStack} options={{ headerShown: false }} />
       </Tab.Navigator>
     </NavigationContainer>
   );
