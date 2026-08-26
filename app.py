@@ -11,12 +11,15 @@ Auth:
 """
 
 import secrets
+import os
+import time
+import base64
 from datetime import datetime, timedelta
 
 from flask import Flask, jsonify, request, g
 from werkzeug.security import check_password_hash
 
-from database import get_db, crear_tablas
+from database import get_db, crear_tablas, UPLOAD_FOLDER
 import sqlite3
 
 app = Flask(__name__)
@@ -423,6 +426,175 @@ def crear_contrato():
     g.db.execute("UPDATE unidades SET estado='ocupada' WHERE id=?", (unidad["id"],))
     g.db.commit()
     return jsonify({"ok": True}), 201
+
+
+# --- Servicios y Recibos (servicios compartidos, modelo v2 11-12) ---
+
+@app.route("/api/servicios")
+def list_servicios():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    rows = query_all("SELECT * FROM servicios WHERE activo=1 ORDER BY id")
+    return jsonify([row_to_dict(r) for r in rows])
+
+
+@app.route("/api/recibos")
+def list_recibos():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    propiedad_id = request.args.get("propiedad_id")
+    periodo = request.args.get("periodo")
+    sql = """
+        SELECT r.*, s.nombre as servicio_nombre, p.nombre as propiedad_nombre
+        FROM recibos r
+        JOIN servicios s ON s.id = r.servicio_id
+        JOIN propiedades p ON p.id = r.propiedad_id
+    """
+    where = []
+    params = []
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        if pid is None:
+            return jsonify([])
+        where.append("r.propiedad_id IN (SELECT id FROM propiedades WHERE propietario_id=?)")
+        params.append(pid)
+    elif user["rol"] == "inquilino":
+        inq = query_one("SELECT id FROM inquilinos WHERE usuario_id=?", (user["id"],))
+        if not inq:
+            return jsonify([])
+        where.append("r.id IN (SELECT recibo_id FROM distribucion_servicios WHERE unidad_id IN (SELECT unidad_id FROM contratos WHERE inquilino_id=? AND estado='activo'))")
+        params.append(inq["id"])
+    if propiedad_id:
+        where.append("r.propiedad_id=?")
+        params.append(propiedad_id)
+    if periodo:
+        where.append("r.periodo=?")
+        params.append(periodo)
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY r.fecha_creacion DESC LIMIT 100"
+
+    result = []
+    for r in query_all(sql, params):
+        d = row_to_dict(r)
+        dist = query_all("""
+            SELECT d.id, d.unidad_id, d.metodo, d.porcentaje, d.monto, d.consumo, d.notas, u.codigo, u.nombre
+            FROM distribucion_servicios d JOIN unidades u ON u.id = d.unidad_id
+            WHERE d.recibo_id=?
+        """, (r["id"],))
+        d["distribucion"] = [row_to_dict(x) for x in dist]
+        result.append(d)
+    return jsonify(result)
+
+
+def _calcular_distribucion(valor, metodo, distribucion, unidades_ids):
+    """Devuelve {unidad_id: {monto, porcentaje, consumo}} segun el metodo."""
+    n = len(unidades_ids)
+    items = {d.get("unidad_id"): d for d in distribucion}
+    result = {}
+    if metodo == "partes_iguales":
+        base = round(valor / n, 2)
+        diff = round(valor - base * n, 2)
+        for i, uid in enumerate(unidades_ids):
+            monto = round(base + diff, 2) if i == n - 1 else base
+            result[uid] = {"monto": monto, "porcentaje": round(100 / n, 4), "consumo": 0}
+    elif metodo == "porcentaje":
+        for uid in unidades_ids:
+            pct = items.get(uid, {}).get("porcentaje", 0) or 0
+            result[uid] = {"monto": round(valor * pct / 100, 2), "porcentaje": pct, "consumo": 0}
+    elif metodo == "consumo":
+        total_consumo = sum(items.get(uid, {}).get("consumo", 0) or 0 for uid in unidades_ids)
+        total_consumo = total_consumo or 1
+        for uid in unidades_ids:
+            cons = items.get(uid, {}).get("consumo", 0) or 0
+            result[uid] = {"monto": round(valor * cons / total_consumo, 2), "porcentaje": 0, "consumo": cons}
+    else:  # valor_fijo o manual
+        for uid in unidades_ids:
+            monto = items.get(uid, {}).get("monto", 0) or 0
+            result[uid] = {"monto": monto, "porcentaje": 0, "consumo": 0}
+    return result
+
+
+def _guardar_foto(foto_base64):
+    if not foto_base64:
+        return ""
+    try:
+        if "," in foto_base64:
+            header, data = foto_base64.split(",", 1)
+            ext = (header.split(";")[0].split("/")[-1] or "jpg").replace("jpeg", "jpg")
+        else:
+            data = foto_base64
+            ext = "jpg"
+        filename = f"recibo_{int(time.time())}.{ext}"
+        ruta = os.path.join(UPLOAD_FOLDER, "recibos", filename)
+        with open(ruta, "wb") as f:
+            f.write(base64.b64decode(data))
+        return filename
+    except Exception:
+        return ""
+
+
+@app.route("/api/recibos", methods=["POST"])
+def crear_recibo():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
+
+    data = request.get_json(silent=True) or {}
+    servicio_id = data.get("servicio_id")
+    propiedad_id = data.get("propiedad_id")
+    valor = data.get("valor")
+    if not servicio_id or not propiedad_id or valor is None:
+        return jsonify({"error": "servicio_id, propiedad_id y valor son requeridos"}), 400
+
+    prop = query_one("SELECT * FROM propiedades WHERE id=?", (propiedad_id,))
+    if not prop:
+        return jsonify({"error": "Propiedad no existe"}), 404
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        if pid is None or prop["propietario_id"] != pid:
+            return jsonify({"error": "No autorizado sobre esa propiedad"}), 403
+
+    unidades = query_all("SELECT * FROM unidades WHERE propiedad_id=? ORDER BY id", (propiedad_id,))
+    if not unidades:
+        return jsonify({"error": "La propiedad no tiene unidades"}), 400
+
+    distribucion = data.get("distribucion") or []
+    unidades_ids = [d.get("unidad_id") for d in distribucion]
+    if not unidades_ids:
+        unidades_ids = [u["id"] for u in unidades]
+    valid_ids = {u["id"] for u in unidades}
+    for uid in unidades_ids:
+        if uid not in valid_ids:
+            return jsonify({"error": f"Unidad {uid} no pertenece a la propiedad"}), 400
+
+    metodo = data.get("metodo", "partes_iguales")
+    if metodo not in ("partes_iguales", "porcentaje", "consumo", "valor_fijo", "manual"):
+        metodo = "partes_iguales"
+    montos = _calcular_distribucion(valor, metodo, distribucion, unidades_ids)
+
+    recibo_adjunto = _guardar_foto(data.get("foto_base64"))
+
+    cur = g.db.execute("""
+        INSERT INTO recibos (servicio_id, propiedad_id, periodo, valor, fecha_vencimiento, empresa_prestadora, numero_cuenta, estado, recibo_adjunto, notas)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+    """, (servicio_id, propiedad_id, data.get("periodo") or datetime.now().strftime("%Y-%m"), valor,
+          data.get("fecha_vencimiento"), data.get("empresa_prestadora", ""), data.get("numero_cuenta", ""),
+          data.get("estado", "pendiente"), recibo_adjunto, data.get("notas", "")))
+    recibo_id = cur.lastrowid
+
+    for uid in unidades_ids:
+        m = montos[uid]
+        g.db.execute("""
+            INSERT INTO distribucion_servicios (recibo_id, unidad_id, metodo, porcentaje, monto, consumo)
+            VALUES (?,?,?,?,?,?)
+        """, (recibo_id, uid, metodo, m["porcentaje"], m["monto"], m["consumo"]))
+    g.db.commit()
+    return jsonify({"ok": True, "recibo_id": recibo_id}), 201
 
 
 if __name__ == "__main__":
