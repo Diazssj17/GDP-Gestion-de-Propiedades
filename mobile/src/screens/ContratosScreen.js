@@ -5,11 +5,13 @@ import { api, BASE_URL } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 
 const estadoColor = { activo: '#059669', pendiente: '#EA580C', vencido: '#DC2626', proximo_a_vencer: '#D97706', terminado: '#64748B', cancelado: '#64748B' };
+const TIPO_LABEL = { contrato: 'Contrato', cedula: 'Cédula', certificado_laboral: 'Certificado laboral', fiador: 'Fiador', otro: 'Otro' };
 
 export default function ContratosScreen({ navigation }) {
   const { theme } = useTheme();
   const c = theme.colors;
   const [data, setData] = useState([]);
+  const [docsMap, setDocsMap] = useState({});
   const [loading, setLoading] = useState(true);
   // modal renovar
   const [renovar, setRenovar] = useState(null);
@@ -19,7 +21,15 @@ export default function ContratosScreen({ navigation }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setData(await api.contratos()); } catch { setData([]); }
+    try {
+      const contratos = await api.contratos();
+      setData(contratos);
+      const map = {};
+      await Promise.all(contratos.map(async (ct) => {
+        try { map[ct.id] = await api.documentosContrato(ct.id); } catch { map[ct.id] = []; }
+      }));
+      setDocsMap(map);
+    } catch { setData([]); }
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -70,9 +80,14 @@ export default function ContratosScreen({ navigation }) {
             <Text style={[s.meta, { color: c.textSecondary }]}>{item.fecha_inicio} → {item.fecha_fin} · Canon ${Number(item.canon).toLocaleString('es-CO')}</Text>
             {item.documento ? (
               <TouchableOpacity onPress={() => Linking.openURL(`${BASE_URL}/static/uploads/contratos/${item.documento}`)}>
-                <Text style={[s.docLink, { color: c.accent }]}>📄 Ver documento adjunto</Text>
+                <Text style={[s.docLink, { color: c.accent }]}>📄 Contrato (documento principal)</Text>
               </TouchableOpacity>
             ) : null}
+            {(docsMap[item.id] || []).map(d => (
+              <TouchableOpacity key={d.id} onPress={() => Linking.openURL(`${BASE_URL}/static/uploads/documentos/${d.ruta}`)}>
+                <Text style={[s.docLink, { color: c.accent }]}>📄 {TIPO_LABEL[d.tipo] || d.tipo}: {d.nombre}</Text>
+              </TouchableOpacity>
+            ))}
             {item.estado === 'activo' || item.estado === 'proximo_a_vencer' || item.estado === 'vencido' ? (
               <View style={s.actions}>
                 <TouchableOpacity style={[s.actBtn, { borderColor: c.accent }]} onPress={() => abrirRenovar(item)}>

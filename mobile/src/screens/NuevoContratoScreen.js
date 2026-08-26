@@ -7,6 +7,14 @@ import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import Picker from '../components/Picker';
 
+const TIPOS_DOC = [
+  { id: 'contrato', nombre: 'Contrato' },
+  { id: 'cedula', nombre: 'Cédula' },
+  { id: 'certificado_laboral', nombre: 'Certificado laboral' },
+  { id: 'fiador', nombre: 'Fiador' },
+  { id: 'otro', nombre: 'Otro' },
+];
+
 export default function NuevoContratoScreen({ navigation }) {
   const { theme } = useTheme();
   const c = theme.colors;
@@ -28,7 +36,8 @@ export default function NuevoContratoScreen({ navigation }) {
   const [canon, setCanon] = useState('');
   const [deposito, setDeposito] = useState('');
   const [diaLimite, setDiaLimite] = useState('5');
-  const [documento, setDocumento] = useState(null); // { name, mime, base64 }
+  const [tipoDoc, setTipoDoc] = useState('contrato');
+  const [documentos, setDocumentos] = useState([]); // [{name, tipo, base64}]
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -53,9 +62,10 @@ export default function NuevoContratoScreen({ navigation }) {
     try {
       const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
       const mime = asset.mimeType || 'application/pdf';
-      setDocumento({ name: asset.name, mime, base64: `data:${mime};base64,${base64}` });
+      setDocumentos(prev => [...prev, { name: asset.name, tipo: tipoDoc, base64: `data:${mime};base64,${base64}` }]);
     } catch (e) { setError('No se pudo leer el documento'); }
   };
+  const quitarDocumento = (i) => setDocumentos(prev => prev.filter((_, idx) => idx !== i));
 
   const guardar = async () => {
     setError('');
@@ -69,7 +79,13 @@ export default function NuevoContratoScreen({ navigation }) {
         const nuevo = await api.crearInquilino({ nombre: nuevoNombre, documento: nuevoDoc, telefono: nuevoTel });
         inqId = nuevo.id;
       }
-      await api.crearContrato({ unidad_id: unidadId, inquilino_id: inqId, fecha_inicio: fechaInicio, fecha_fin: fechaFin, canon: Number(canon), deposito: Number(deposito || 0), dia_limite_pago: Number(diaLimite || 5), documento_base64: documento?.base64 || null });
+      // El primer documento de tipo 'contrato' se guarda como documento principal; los demas como documentos extra
+      const principal = documentos.find(d => d.tipo === 'contrato');
+      const res = await api.crearContrato({ unidad_id: unidadId, inquilino_id: inqId, fecha_inicio: fechaInicio, fecha_fin: fechaFin, canon: Number(canon), deposito: Number(deposito || 0), dia_limite_pago: Number(diaLimite || 5), documento_base64: principal?.base64 || null });
+      for (const d of documentos) {
+        if (d === principal) continue;
+        await api.subirDocumento(res.id, { nombre: d.name, tipo: d.tipo, base64: d.base64 });
+      }
       navigation.goBack();
     } catch (e) {
       setError(e?.response?.data?.error || 'Error al guardar');
@@ -114,11 +130,20 @@ export default function NuevoContratoScreen({ navigation }) {
       <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} placeholder="Día límite de pago (ej. 5)" placeholderTextColor={c.placeholder} value={diaLimite} onChangeText={setDiaLimite} keyboardType="numeric" />
 
       <Text style={[s.section, { color: c.text }]}>Documentación</Text>
+      <Picker label="Tipo de documento" value={tipoDoc} options={TIPOS_DOC} onSelect={setTipoDoc} />
       <TouchableOpacity style={[s.photoBtn, { backgroundColor: c.card, borderColor: c.border }]} onPress={adjuntarDocumento}>
         <Ionicons name="document-attach" size={18} color={c.accent} />
-        <Text style={{ color: c.textSecondary }}>{documento ? documento.name : 'Adjuntar contrato PDF / documentación'}</Text>
+        <Text style={{ color: c.textSecondary }}>Agregar documento (PDF / imagen)</Text>
       </TouchableOpacity>
-      {documento ? <Text style={[s.docHint, { color: c.success }]}>✓ {documento.name} adjunto</Text> : null}
+      {documentos.map((d, i) => (
+        <View key={i} style={[s.docRow, { backgroundColor: c.card, borderColor: c.border }]}>
+          <Ionicons name="document" size={16} color={c.accent} />
+          <Text style={[s.docName, { color: c.text }]} numberOfLines={1}>{d.name}</Text>
+          <Text style={[s.docTipo, { color: c.textMuted }]}>{TIPOS_DOC.find(t => t.id === d.tipo)?.nombre || d.tipo}</Text>
+          <TouchableOpacity onPress={() => quitarDocumento(i)}><Ionicons name="close-circle" size={18} color={c.danger} /></TouchableOpacity>
+        </View>
+      ))}
+      {documentos.length === 0 ? <Text style={[s.docHint, { color: c.textMuted }]}>Cédula, certificado laboral, fiador, etc.</Text> : null}
 
       {error ? <Text style={s.error}>{error}</Text> : null}
       <TouchableOpacity style={[s.btn, { backgroundColor: c.primary }]} onPress={guardar} disabled={loading}>
@@ -138,6 +163,9 @@ const s = StyleSheet.create({
   toggle: { borderWidth: 1, borderRadius: 10, padding: 12, alignItems: 'center', marginBottom: 12 },
   photoBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, padding: 12, marginTop: 4, justifyContent: 'center' },
   docHint: { fontSize: 12, marginTop: 8, fontWeight: '600' },
+  docRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, padding: 10, marginTop: 8 },
+  docName: { flex: 1, fontSize: 13, fontWeight: '600' },
+  docTipo: { fontSize: 11 },
   error: { color: '#DC2626', fontSize: 13, marginTop: 10, textAlign: 'center' },
   btn: { borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 16 },

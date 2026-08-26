@@ -434,14 +434,63 @@ def crear_contrato():
         return jsonify({"error": "fecha_inicio, fecha_fin y canon son requeridos"}), 400
 
     documento = _guardar_foto(data.get("documento_base64"), sub="contratos", prefix="doc")
-    g.db.execute("""
+    cur = g.db.execute("""
         INSERT INTO contratos (unidad_id, inquilino_id, fecha_inicio, fecha_fin, canon, deposito, dia_limite_pago, estado, documento)
         VALUES (?,?,?,?,?,?,?,?,?)
     """, (data["unidad_id"], data["inquilino_id"], data["fecha_inicio"], data["fecha_fin"],
           data["canon"], data.get("deposito", 0), data.get("dia_limite_pago", 5), "activo", documento))
     g.db.execute("UPDATE unidades SET estado='ocupada' WHERE id=?", (unidad["id"],))
     g.db.commit()
-    return jsonify({"ok": True, "documento": documento}), 201
+    return jsonify({"ok": True, "id": cur.lastrowid, "documento": documento}), 201
+
+
+# --- Documentos de contrato (varios: cedula, certificado laboral, fiador, etc.) ---
+@app.route("/api/contratos/<int:contrato_id>/documentos", methods=["GET"])
+def list_documentos_contrato(contrato_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    rows = query_all("SELECT * FROM documentos WHERE entidad_tipo='contrato' AND entidad_id=? ORDER BY id", (contrato_id,))
+    return jsonify([row_to_dict(r) for r in rows])
+
+
+@app.route("/api/contratos/<int:contrato_id>/documentos", methods=["POST"])
+def subir_documento_contrato(contrato_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
+    contrato = query_one("SELECT id FROM contratos WHERE id=?", (contrato_id,))
+    if not contrato:
+        return jsonify({"error": "Contrato no existe"}), 404
+    data = request.get_json(silent=True) or {}
+    nombre = data.get("nombre", "documento")
+    tipo = data.get("tipo", "otro")
+    filename = _guardar_foto(data.get("base64"), sub="documentos", prefix="doc")
+    if not filename:
+        return jsonify({"error": "base64 requerido"}), 400
+    cur = g.db.execute("""
+        INSERT INTO documentos (entidad_tipo, entidad_id, nombre, ruta, tipo, tamanio, subido_por)
+        VALUES ('contrato', ?, ?, ?, ?, ?, ?)
+    """, (contrato_id, nombre, filename, tipo, data.get("tamanio", 0), user["id"]))
+    g.db.commit()
+    return jsonify({"ok": True, "id": cur.lastrowid, "ruta": filename}), 201
+
+
+@app.route("/api/documentos/<int:doc_id>", methods=["DELETE"])
+def eliminar_documento(doc_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
+    doc = query_one("SELECT * FROM documentos WHERE id=?", (doc_id,))
+    if not doc:
+        return jsonify({"error": "Documento no existe"}), 404
+    g.db.execute("DELETE FROM documentos WHERE id=?", (doc_id,))
+    g.db.commit()
+    return jsonify({"ok": True})
 
 
 def _sumar_meses(fecha, meses):
