@@ -29,6 +29,9 @@ export const api = {
   contratos: () => client.get('/api/contratos').then(r => r.data),
   pagos: (estado) => client.get('/api/pagos', { params: estado ? { estado } : {} }).then(r => r.data),
   alertas: () => client.get('/api/alertas').then(r => r.data),
+  servicios: () => client.get('/api/servicios').then(r => r.data),
+  recibos: (params = {}) => client.get('/api/recibos', { params }).then(r => r.data),
+  crearRecibo: (data) => client.post('/api/recibos', data).then(r => r.data),
   // Crear contrato - valida 1 activo por unidad en backend (app.py:contratos)
   crearContrato: (data) => client.post('/api/contratos', data).then(r => r.data),
 };

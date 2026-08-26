@@ -12,6 +12,7 @@ import UnidadesScreen from '../screens/UnidadesScreen';
 import ContratosScreen from '../screens/ContratosScreen';
 import PagosScreen from '../screens/PagosScreen';
 import ServiciosScreen from '../screens/ServiciosScreen';
+import NuevoReciboScreen from '../screens/NuevoReciboScreen';
 import MantenimientoScreen from '../screens/MantenimientoScreen';
 
 const Tab = createBottomTabNavigator();
@@ -23,6 +24,16 @@ function PropiedadesStack() {
     <Stack.Navigator>
       <Stack.Screen name="PropiedadesList" component={PropiedadesScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Unidades" component={UnidadesScreen} options={{ title: 'Unidades', headerRight: () => <HeaderRight />, headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text }} />
+    </Stack.Navigator>
+  );
+}
+
+function ServiciosStack() {
+  const { theme } = useTheme();
+  return (
+    <Stack.Navigator>
+      <Stack.Screen name="ServiciosList" component={ServiciosScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="NuevoRecibo" component={NuevoReciboScreen} options={{ title: 'Nuevo recibo', headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerRight: () => <HeaderRight /> }} />
     </Stack.Navigator>
   );
 }
@@ -52,7 +63,7 @@ export default function AppNavigator() {
         <Tab.Screen name="Propiedades" component={PropiedadesStack} options={{ headerShown: false }} />
         <Tab.Screen name="Contratos" component={ContratosScreen} />
         <Tab.Screen name="Pagos" component={PagosScreen} />
-        <Tab.Screen name="Servicios" component={ServiciosScreen} />
+        <Tab.Screen name="Servicios" component={ServiciosStack} options={{ headerShown: false }} />
         <Tab.Screen name="Mantenimiento" component={MantenimientoScreen} />
       </Tab.Navigator>
     </NavigationContainer>
