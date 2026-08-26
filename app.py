@@ -564,21 +564,34 @@ def list_inquilinos():
     if not user:
         return jsonify({"error": "No autenticado"}), 401
     if user["rol"] == "superadmin":
-        rows = query_all("SELECT * FROM inquilinos ORDER BY nombre LIMIT 100")
+        rows = query_all("""
+            SELECT i.*, us.email as usuario_email, us.activo as usuario_activo
+            FROM inquilinos i LEFT JOIN usuarios us ON us.id = i.usuario_id
+            ORDER BY i.nombre LIMIT 200
+        """)
     elif user["rol"] == "propietario":
         pid = _id_propietario_del_usuario(user["id"])
         if pid is None:
             return jsonify([])
         rows = query_all("""
-            SELECT DISTINCT i.* FROM inquilinos i
-            JOIN contratos c ON c.inquilino_id = i.id
-            JOIN unidades u ON u.id = c.unidad_id
-            JOIN propiedades pr ON pr.id = u.propiedad_id
-            WHERE pr.propietario_id = ?
+            SELECT i.*, us.email as usuario_email, us.activo as usuario_activo
+            FROM inquilinos i
+            LEFT JOIN usuarios us ON us.id = i.usuario_id
+            WHERE i.propietario_id = ?
+               OR i.id IN (
+                 SELECT c.inquilino_id FROM contratos c
+                 JOIN unidades u ON u.id = c.unidad_id
+                 JOIN propiedades pr ON pr.id = u.propiedad_id
+                 WHERE pr.propietario_id = ?
+               )
             ORDER BY i.nombre
-        """, (pid,))
+        """, (pid, pid))
     else:
-        rows = query_all("SELECT * FROM inquilinos WHERE usuario_id=?", (user["id"],))
+        rows = query_all("""
+            SELECT i.*, us.email as usuario_email, us.activo as usuario_activo
+            FROM inquilinos i LEFT JOIN usuarios us ON us.id = i.usuario_id
+            WHERE i.usuario_id = ?
+        """, (user["id"],))
     return jsonify([row_to_dict(r) for r in rows])
 
 
@@ -595,6 +608,9 @@ def crear_inquilino():
         return jsonify({"error": "nombre requerido"}), 400
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
+    propietario_id = None
+    if user["rol"] == "propietario":
+        propietario_id = _id_propietario_del_usuario(user["id"])
 
     # Crear cuenta de usuario (rol inquilino) si se pide email + password
     usuario_id = None
@@ -611,12 +627,77 @@ def crear_inquilino():
         creado_usuario = True
 
     cur = g.db.execute("""
-        INSERT INTO inquilinos (nombre, documento, email, telefono, direccion, referencia, usuario_id)
-        VALUES (?,?,?,?,?,?,?)
+        INSERT INTO inquilinos (nombre, documento, email, telefono, direccion, referencia, usuario_id, propietario_id)
+        VALUES (?,?,?,?,?,?,?,?)
     """, (nombre, data.get("documento", ""), email, data.get("telefono", ""),
-          data.get("direccion", ""), data.get("referencia", ""), usuario_id))
+          data.get("direccion", ""), data.get("referencia", ""), usuario_id, propietario_id))
     g.db.commit()
     return jsonify({"ok": True, "id": cur.lastrowid, "usuario_id": usuario_id, "creado_usuario": creado_usuario}), 201
+
+
+@app.route("/api/inquilinos/<int:inquilino_id>", methods=["PATCH"])
+def gestionar_inquilino(inquilino_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
+    inq = query_one("SELECT * FROM inquilinos WHERE id=?", (inquilino_id,))
+    if not inq:
+        return jsonify({"error": "Inquilino no existe"}), 404
+    data = request.get_json(silent=True) or {}
+    accion = data.get("accion")
+
+    # Actualizar datos basicos
+    if accion is None:
+        g.db.execute("""
+            UPDATE inquilinos SET nombre=?, documento=?, telefono=?, direccion=?, referencia=? WHERE id=?
+        """, (data.get("nombre", inq["nombre"]), data.get("documento", inq["documento"]),
+              data.get("telefono", inq["telefono"]), data.get("direccion", inq["direccion"]),
+              data.get("referencia", inq["referencia"]), inquilino_id))
+        g.db.commit()
+        return jsonify({"ok": True})
+
+    # Crear cuenta de acceso
+    if accion == "crear_cuenta":
+        email = (data.get("email") or "").strip().lower()
+        password = data.get("password") or ""
+        if not email or not password:
+            return jsonify({"error": "email y password requeridos"}), 400
+        if inq["usuario_id"]:
+            return jsonify({"error": "El inquilino ya tiene cuenta"}), 400
+        existente = query_one("SELECT id FROM usuarios WHERE lower(email)=?", (email,))
+        if existente:
+            return jsonify({"error": "Ya existe un usuario con ese email"}), 400
+        cur = g.db.execute(
+            "INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES (?,?,?,?)",
+            (inq["nombre"], email, generate_password_hash(password), "inquilino"),
+        )
+        g.db.execute("UPDATE inquilinos SET usuario_id=?, email=? WHERE id=?", (cur.lastrowid, email, inquilino_id))
+        g.db.commit()
+        return jsonify({"ok": True, "usuario_id": cur.lastrowid})
+
+    # Desactivar / activar cuenta
+    if accion in ("desactivar", "activar"):
+        if not inq["usuario_id"]:
+            return jsonify({"error": "El inquilino no tiene cuenta"}), 400
+        activo = 1 if accion == "activar" else 0
+        g.db.execute("UPDATE usuarios SET activo=? WHERE id=?", (activo, inq["usuario_id"]))
+        g.db.commit()
+        return jsonify({"ok": True, "activo": activo})
+
+    # Resetear contrasena
+    if accion == "reset_password":
+        password = data.get("password") or ""
+        if not password:
+            return jsonify({"error": "password requerido"}), 400
+        if not inq["usuario_id"]:
+            return jsonify({"error": "El inquilino no tiene cuenta"}), 400
+        g.db.execute("UPDATE usuarios SET password_hash=? WHERE id=?", (generate_password_hash(password), inq["usuario_id"]))
+        g.db.commit()
+        return jsonify({"ok": True})
+
+    return jsonify({"error": "accion invalida (crear_cuenta/desactivar/activar/reset_password)"}), 400
 
 
 # --- Pagos (crear + registrar con mora) ---

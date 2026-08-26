@@ -35,6 +35,7 @@ export const api = {
   eliminarDocumento: (id) => client.delete(`/api/documentos/${id}`).then(r => r.data),
   inquilinos: () => client.get('/api/inquilinos').then(r => r.data),
   crearInquilino: (data) => client.post('/api/inquilinos', data).then(r => r.data),
+  gestionarInquilino: (id, data) => client.patch(`/api/inquilinos/${id}`, data).then(r => r.data),
   pagos: (estado) => client.get('/api/pagos', { params: estado ? { estado } : {} }).then(r => r.data),
   detallePago: (id) => client.get(`/api/pagos/${id}`).then(r => r.data),
   crearPago: (data) => client.post('/api/pagos', data).then(r => r.data),

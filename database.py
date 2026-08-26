@@ -188,6 +188,7 @@ def crear_tablas():
         CREATE TABLE IF NOT EXISTS inquilinos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+            propietario_id INTEGER REFERENCES propietarios(id) ON DELETE SET NULL,
             nombre TEXT NOT NULL,
             documento TEXT NOT NULL DEFAULT '',
             email TEXT DEFAULT '',
@@ -200,6 +201,8 @@ def crear_tablas():
     """)
     if not _tiene_columna(conexion, "inquilinos", "contacto_emergencia"):
         conexion.execute("ALTER TABLE inquilinos ADD COLUMN contacto_emergencia TEXT DEFAULT ''")
+    if not _tiene_columna(conexion, "inquilinos", "propietario_id"):
+        conexion.execute("ALTER TABLE inquilinos ADD COLUMN propietario_id INTEGER REFERENCES propietarios(id) ON DELETE SET NULL")
 
     # --- 8) Contratos ---
     conexion.execute("""
@@ -475,7 +478,7 @@ def crear_tablas():
         "CREATE INDEX IF NOT EXISTS idx_unidades_estado ON unidades(estado)",
         "CREATE INDEX IF NOT EXISTS idx_contratos_unidad ON contratos(unidad_id)",
         "CREATE INDEX IF NOT EXISTS idx_contratos_inquilino ON contratos(inquilino_id)",
-        "CREATE INDEX IF NOT EXISTS idx_contratos_estado ON contratos(estado)",
+        "CREATE INDEX IF NOT EXISTS idx_inquilinos_propietario ON inquilinos(propietario_id)",        "CREATE INDEX IF NOT EXISTS idx_contratos_estado ON contratos(estado)",
         "CREATE INDEX IF NOT EXISTS idx_contratos_fechas ON contratos(fecha_fin, estado)",
         "CREATE INDEX IF NOT EXISTS idx_pagos_contrato ON pagos(contrato_id)",
         "CREATE INDEX IF NOT EXISTS idx_pagos_estado_vencimiento ON pagos(estado, fecha_vencimiento)",
