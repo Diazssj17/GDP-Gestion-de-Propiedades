@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { api } from '../api/client';
+import { api, BASE_URL } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 
 const estadoColor = { pendiente: '#EA580C', pagado: '#059669', vencido: '#DC2626', parcial: '#D97706' };
@@ -39,6 +39,9 @@ export default function ServiciosScreen({ navigation }) {
                 <View style={[s.badge, { backgroundColor: estadoColor[item.estado] || '#64748B' }]}><Text style={s.badgeText}>{item.estado}</Text></View>
               </View>
               <Text style={[s.valor, { color: c.text }]}>{fmt(item.valor)}</Text>
+              {item.recibo_adjunto ? (
+                <Image source={{ uri: `${BASE_URL}/static/uploads/recibos/${item.recibo_adjunto}` }} style={s.foto} resizeMode="cover" />
+              ) : null}
               {item.distribucion?.length > 1 ? (
                 <View style={[s.dist, { backgroundColor: theme.dark ? '#12243B' : '#EFF6FF' }]}>
                   <Text style={[s.distTitle, { color: c.accent }]}>Distribución ({item.distribucion[0].metodo.replace('_', ' ')})</Text>
@@ -69,6 +72,7 @@ const s = StyleSheet.create({
   title: { fontWeight: '700', fontSize: 15 },
   meta: { fontSize: 11, marginTop: 2 },
   valor: { fontSize: 20, fontWeight: '800', marginTop: 8 },
+  foto: { width: 100, height: 100, borderRadius: 8, marginTop: 8 },
   dist: { borderRadius: 8, padding: 10, marginTop: 10 },
   distTitle: { fontWeight: '700', fontSize: 11, textTransform: 'uppercase', marginBottom: 4 },
   distItem: { fontSize: 12, lineHeight: 18 },
