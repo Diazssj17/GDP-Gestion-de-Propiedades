@@ -39,7 +39,7 @@ def _tiene_tabla(conexion, tabla):
 def crear_tablas():
     conexion = get_db()
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    for sub in ["comprobantes", "unidades", "recibos", "documentos", "contratos"]:
+    for sub in ["comprobantes", "unidades", "recibos", "documentos", "contratos", "mantenimiento"]:
         os.makedirs(os.path.join(UPLOAD_FOLDER, sub), exist_ok=True)
 
     # --- 0) Roles (catalogo) ---

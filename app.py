@@ -396,7 +396,7 @@ def reporte_resumen():
         SELECT COUNT(*) as c FROM pagos p JOIN contratos c ON c.id=p.contrato_id JOIN unidades u ON u.id=c.unidad_id
         WHERE p.estado='pendiente' {u_clause}
     """, u_params)["c"]
-    tickets_pendientes = query_one(f"SELECT COUNT(*) as c FROM mantenimiento WHERE estado='pendiente' {man_scope}", params_man)["c"]
+    tickets_pendientes = query_one(f"SELECT COUNT(*) as c FROM mantenimientos WHERE estado IN ('reportado','pendiente','en_revision','en_proceso') {man_scope}", params_man)["c"]
 
     return jsonify({
         "total_propiedades": total_propiedades,
@@ -547,6 +547,97 @@ def registrar_pago(pago_id):
     return jsonify({"ok": True, "estado": estado})
 
 
+# --- Mantenimiento (tickets con camara) ---
+@app.route("/api/mantenimientos")
+def list_mantenimientos():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    estado = request.args.get("estado", "")
+    sql = """
+        SELECT m.*, u.codigo as unidad_codigo, u.nombre as unidad_nombre, p.nombre as propiedad_nombre, us.nombre as reportado_nombre
+        FROM mantenimientos m
+        JOIN unidades u ON u.id = m.unidad_id
+        LEFT JOIN propiedades p ON p.id = m.propiedad_id
+        LEFT JOIN usuarios us ON us.id = m.reportado_por
+    """
+    where = []
+    params = []
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        if pid is None:
+            return jsonify([])
+        where.append("m.unidad_id IN (SELECT u.id FROM unidades u JOIN propiedades pr ON pr.id = u.propiedad_id WHERE pr.propietario_id = ?)")
+        params.append(pid)
+    elif user["rol"] == "inquilino":
+        inq = query_one("SELECT id FROM inquilinos WHERE usuario_id=?", (user["id"],))
+        if inq:
+            where.append("(m.reportado_por = ? OR m.unidad_id IN (SELECT unidad_id FROM contratos WHERE inquilino_id = ? AND estado='activo'))")
+            params.append(user["id"])
+            params.append(inq["id"])
+    if estado:
+        where.append("m.estado = ?")
+        params.append(estado)
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY m.fecha_reporte DESC LIMIT 100"
+    return jsonify([row_to_dict(r) for r in query_all(sql, params)])
+
+
+@app.route("/api/mantenimientos", methods=["POST"])
+def crear_mantenimiento():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    data = request.get_json(silent=True) or {}
+    unidad_id = data.get("unidad_id")
+    titulo = data.get("titulo")
+    descripcion = data.get("descripcion")
+    if not unidad_id or not titulo or not descripcion:
+        return jsonify({"error": "unidad_id, titulo y descripcion son requeridos"}), 400
+    unidad = query_one("SELECT * FROM unidades WHERE id=?", (unidad_id,))
+    if not unidad:
+        return jsonify({"error": "Unidad no existe"}), 404
+
+    fotos = []
+    foto = _guardar_foto(data.get("foto_base64"), sub="mantenimiento", prefix="mant")
+    if foto:
+        fotos.append(foto)
+    import json as _json
+    cur = g.db.execute("""
+        INSERT INTO mantenimientos (unidad_id, propiedad_id, reportado_por, tipo, titulo, descripcion, prioridad, estado, responsable, costo_estimado, fotografias)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
+    """, (unidad_id, unidad["propiedad_id"], user["id"], data.get("tipo", "correctivo"), titulo, descripcion,
+          data.get("prioridad", "media"), "reportado", data.get("responsable", ""), data.get("costo_estimado", 0),
+          _json.dumps(fotos)))
+    g.db.commit()
+    return jsonify({"ok": True, "id": cur.lastrowid}), 201
+
+
+@app.route("/api/mantenimientos/<int:ticket_id>", methods=["PATCH"])
+def actualizar_mantenimiento(ticket_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
+    t = query_one("SELECT * FROM mantenimientos WHERE id=?", (ticket_id,))
+    if not t:
+        return jsonify({"error": "Ticket no existe"}), 404
+    data = request.get_json(silent=True) or {}
+    estado = data.get("estado", t["estado"])
+    costo_real = data.get("costo_real", t["costo_real"])
+    responsable = data.get("responsable", t["responsable"])
+    fecha_resolucion = data.get("fecha_resolucion", t["fecha_resolucion"])
+    if estado in ("resuelto", "cancelado") and not fecha_resolucion:
+        fecha_resolucion = datetime.now().strftime("%Y-%m-%d")
+    g.db.execute("""
+        UPDATE mantenimientos SET estado=?, costo_real=?, responsable=?, fecha_resolucion=? WHERE id=?
+    """, (estado, costo_real, responsable, fecha_resolucion, ticket_id))
+    g.db.commit()
+    return jsonify({"ok": True, "estado": estado})
+
+
 # --- Servicios y Recibos (servicios compartidos, modelo v2 11-12) ---
 
 @app.route("/api/servicios")
@@ -636,7 +727,7 @@ def _calcular_distribucion(valor, metodo, distribucion, unidades_ids):
     return result
 
 
-def _guardar_foto(foto_base64):
+def _guardar_foto(foto_base64, sub="recibos", prefix="recibo"):
     if not foto_base64:
         return ""
     try:
@@ -646,8 +737,9 @@ def _guardar_foto(foto_base64):
         else:
             data = foto_base64
             ext = "jpg"
-        filename = f"recibo_{int(time.time())}.{ext}"
-        ruta = os.path.join(UPLOAD_FOLDER, "recibos", filename)
+        filename = f"{prefix}_{int(time.time())}.{ext}"
+        ruta = os.path.join(UPLOAD_FOLDER, sub, filename)
+        os.makedirs(os.path.dirname(ruta), exist_ok=True)
         with open(ruta, "wb") as f:
             f.write(base64.b64decode(data))
         return filename
