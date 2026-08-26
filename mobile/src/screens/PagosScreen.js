@@ -6,6 +6,7 @@ import { useTheme } from '../theme/ThemeContext';
 
 const colors = { pendiente: '#EA580C', pagado: '#059669', mora: '#DC2626', parcial: '#D97706', vencido: '#7C3AED' };
 const METODOS = ['efectivo', 'transferencia', 'consignacion', 'pse', 'otro'];
+const METODO_LABEL = { efectivo: 'Efectivo', transferencia: 'Transferencia', consignacion: 'Consignación', pse: 'PSE', otro: 'Otro' };
 
 export default function PagosScreen({ navigation }) {
   const { theme } = useTheme();
@@ -73,6 +74,9 @@ export default function PagosScreen({ navigation }) {
                   <Text style={[s.meta, { color: c.success }]}>Abonado {fmt(item.pagado)} de {fmt(item.monto)}</Text>
                 ) : null}
                 <Text style={[s.meta, { color: c.textSecondary }]}>Vence {item.fecha_vencimiento}{item.fecha_pago ? ` · Último abono ${item.fecha_pago}` : ''}</Text>
+                {item.metodo ? (
+                  <Text style={[s.meta, { color: c.info, fontWeight: '600' }]}>Método de pago: {METODO_LABEL[item.metodo] || item.metodo}</Text>
+                ) : null}
                 {esAbonable && <Text style={[s.registrar, { color: c.accent }]}>Abonar →</Text>}
               </TouchableOpacity>
             );
