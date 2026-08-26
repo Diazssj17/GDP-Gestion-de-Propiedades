@@ -1,15 +1,18 @@
 import { useEffect, useState, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl, Modal, TextInput, Alert, Linking } from 'react-native';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl, Modal, TextInput, Alert, Linking, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { api, BASE_URL } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 
 const estadoColor = { activo: '#059669', pendiente: '#EA580C', vencido: '#DC2626', proximo_a_vencer: '#D97706', terminado: '#64748B', cancelado: '#64748B' };
 const TIPO_LABEL = { contrato: 'Contrato', cedula: 'Cédula', certificado_laboral: 'Certificado laboral', fiador: 'Fiador', otro: 'Otro' };
+const ESTADO_LABEL = { activo: 'Activo', pendiente: 'Pendiente', vencido: 'Vencido', proximo_a_vencer: 'Próximo a vencer', finalizado: 'Finalizado', terminado: 'Terminado', cancelado: 'Cancelado' };
+const FILTROS = ['', 'activo', 'pendiente', 'vencido', 'proximo_a_vencer', 'terminado', 'cancelado'];
 
 export default function ContratosScreen({ navigation }) {
   const { theme } = useTheme();
   const c = theme.colors;
+  const [filtro, setFiltro] = useState('');
   const [data, setData] = useState([]);
   const [docsMap, setDocsMap] = useState({});
   const [loading, setLoading] = useState(true);
@@ -19,10 +22,10 @@ export default function ContratosScreen({ navigation }) {
   const [nuevoCanon, setNuevoCanon] = useState('');
   const [guardando, setGuardando] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (estado = '') => {
     setLoading(true);
     try {
-      const contratos = await api.contratos();
+      const contratos = await api.contratos(estado ? { estado } : {});
       setData(contratos);
       const map = {};
       await Promise.all(contratos.map(async (ct) => {
@@ -32,7 +35,7 @@ export default function ContratosScreen({ navigation }) {
     } catch { setData([]); }
     setLoading(false);
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(''); }, [load]);
 
   const abrirRenovar = (item) => {
     const fin = item.fecha_fin;
@@ -44,19 +47,19 @@ export default function ContratosScreen({ navigation }) {
   };
   const confirmarRenovar = async () => {
     setGuardando(true);
-    try { await api.actualizarContrato(renovar.id, { accion: 'renovar', nueva_fecha_fin: nuevaFecha, canon: Number(nuevoCanon) || 0 }); setRenovar(null); load(); }
+    try { await api.actualizarContrato(renovar.id, { accion: 'renovar', nueva_fecha_fin: nuevaFecha, canon: Number(nuevoCanon) || 0 }); setRenovar(null); load(filtro); }
     catch (e) { console.log(e.message); } finally { setGuardando(false); }
   };
   const terminar = (item) => {
     Alert.alert('Terminar contrato', `¿Terminar el contrato de ${item.unidad_codigo} → ${item.inquilino_nombre}? La unidad quedará disponible.`, [
       { text: 'Cancelar', style: 'cancel' },
-      { text: 'Terminar', style: 'destructive', onPress: async () => { await api.actualizarContrato(item.id, { accion: 'terminar' }); load(); } },
+      { text: 'Terminar', style: 'destructive', onPress: async () => { await api.actualizarContrato(item.id, { accion: 'terminar' }); load(filtro); } },
     ]);
   };
   const cancelar = (item) => {
     Alert.alert('Cancelar contrato', `¿Cancelar el contrato de ${item.unidad_codigo}?`, [
       { text: 'No', style: 'cancel' },
-      { text: 'Sí, cancelar', style: 'destructive', onPress: async () => { await api.actualizarContrato(item.id, { accion: 'cancelar' }); load(); } },
+      { text: 'Sí, cancelar', style: 'destructive', onPress: async () => { await api.actualizarContrato(item.id, { accion: 'cancelar' }); load(filtro); } },
     ]);
   };
 
@@ -65,17 +68,24 @@ export default function ContratosScreen({ navigation }) {
     <View style={[s.container, { backgroundColor: c.background }]}>
       <Text style={[s.header, { color: c.text }]}>Contratos</Text>
       <Text style={[s.sub, { color: c.textSecondary }]}>Unidad ↔ Inquilino · renueva o termina con los botones</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>
+        {FILTROS.map(e => (
+          <TouchableOpacity key={e || 'todos'} onPress={() => { setFiltro(e); load(e); }} style={[s.chip, { backgroundColor: c.card, borderColor: c.border }, filtro === e && { backgroundColor: c.chipActive, borderColor: c.chipActive }]}>
+            <Text style={[s.chipText, { color: filtro === e ? c.chipTextActive : c.textSecondary }]}>{e ? ESTADO_LABEL[e] || e : 'todos'}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
       <FlatList
         data={data}
         keyExtractor={i => String(i.id)}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={c.accent} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load(filtro)} tintColor={c.accent} />}
         contentContainerStyle={{ paddingBottom: 90 }}
         ListEmptyComponent={<Text style={[s.empty, { color: c.textMuted }]}>Sin contratos. Crea uno con el botón +</Text>}
         renderItem={({ item }) => (
           <View style={[s.card, { backgroundColor: c.card }]}>
             <View style={s.row}>
               <Text style={[s.title, { color: c.text }]}>{item.unidad_codigo} → {item.inquilino_nombre}</Text>
-              <View style={[s.badge, { backgroundColor: estadoColor[item.estado] || '#64748B' }]}><Text style={s.badgeText}>{item.estado}</Text></View>
+              <View style={[s.badge, { backgroundColor: estadoColor[item.estado] || '#64748B' }]}><Text style={s.badgeText}>{ESTADO_LABEL[item.estado] || item.estado}</Text></View>
             </View>
             <Text style={[s.meta, { color: c.textSecondary }]}>{item.fecha_inicio} → {item.fecha_fin} · Canon ${Number(item.canon).toLocaleString('es-CO')}</Text>
             {item.documento ? (
@@ -137,7 +147,10 @@ const s = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { fontSize: 20, fontWeight: '800' },
-  sub: { fontSize: 12, marginBottom: 12 },
+  sub: { fontSize: 12, marginBottom: 8 },
+  filters: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 12, paddingBottom: 12 },
+  chip: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, height: 32, justifyContent: 'center', alignItems: 'center' },
+  chipText: { fontSize: 12, textTransform: 'capitalize' },
   card: { borderRadius: 12, padding: 14, marginBottom: 10 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontWeight: '700' },

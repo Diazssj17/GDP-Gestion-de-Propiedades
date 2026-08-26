@@ -267,25 +267,32 @@ def list_contratos():
     user = require_auth()
     if not user:
         return jsonify({"error": "No autenticado"}), 401
+    estado = request.args.get("estado")
     sql = """
         SELECT c.*, u.codigo as unidad_codigo, i.nombre as inquilino_nombre
         FROM contratos c
         JOIN unidades u ON u.id = c.unidad_id
         JOIN inquilinos i ON i.id = c.inquilino_id
     """
+    where = []
     params = []
     if user["rol"] == "propietario":
         pid = _id_propietario_del_usuario(user["id"])
         if pid is None:
             return jsonify([])
-        sql += " WHERE u.propiedad_id IN (SELECT id FROM propiedades WHERE propietario_id=?)"
+        where.append("u.propiedad_id IN (SELECT id FROM propiedades WHERE propietario_id=?)")
         params.append(pid)
     elif user["rol"] == "inquilino":
         inq = query_one("SELECT id FROM inquilinos WHERE usuario_id=?", (user["id"],))
         if not inq:
             return jsonify([])
-        sql += " WHERE c.inquilino_id=?"
+        where.append("c.inquilino_id=?")
         params.append(inq["id"])
+    if estado:
+        where.append("c.estado=?")
+        params.append(estado)
+    if where:
+        sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY c.fecha_inicio DESC LIMIT 50"
     return jsonify([row_to_dict(r) for r in query_all(sql, params)])
 
