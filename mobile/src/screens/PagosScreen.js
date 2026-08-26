@@ -56,13 +56,13 @@ export default function PagosScreen({ navigation }) {
     <View style={[s.container, { backgroundColor: c.background }]}>
       <Text style={[s.header, { color: c.text }]}>Pagos</Text>
       <Text style={[s.sub, { color: c.textSecondary }]}>Toca un pago para ver el detalle</Text>
-      <View style={s.filters}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>
         {['', 'pendiente', 'mora', 'parcial', 'pagado'].map(e => (
           <TouchableOpacity key={e || 'todos'} onPress={() => { setFiltro(e); load(e); }} style={[s.chip, { backgroundColor: c.card, borderColor: c.border }, filtro === e && { backgroundColor: c.chipActive, borderColor: c.chipActive }]}>
             <Text style={[s.chipText, { color: filtro === e ? c.chipTextActive : c.textSecondary }]}>{e || 'todos'}</Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
       {loading ? <ActivityIndicator color={c.accent} /> : (
         <FlatList
           data={data}
@@ -172,7 +172,7 @@ const s = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   header: { fontSize: 20, fontWeight: '800' },
   sub: { fontSize: 12, marginBottom: 8 },
-  filters: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  filters: { flexDirection: 'row', gap: 8, paddingRight: 12, paddingBottom: 12 },
   chip: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
   chipText: { fontSize: 12, textTransform: 'capitalize' },
   card: { borderRadius: 12, padding: 14, marginBottom: 10 },
