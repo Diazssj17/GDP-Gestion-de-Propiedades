@@ -1,14 +1,29 @@
 """
-app.py - GDP Gestión de Propiedades
-Flask + jerarquía completa. Sirve como base funcional y ejemplo de uso del modelo escalable.
+app.py - GDP Gestion de Propiedades
+Flask + autenticacion por tokens (sesiones) + jerarquia completa escalable.
+
+Auth:
+  POST /api/login   -> {token, usuario:{id,nombre,email,rol}}
+  GET  /api/me      -> usuario autenticado (Bearer)
+  POST /api/logout  -> invalida token
+  GET  /api/propietarios  -> solo superadmin
+  Datos filtrados por rol: propietario ve solo sus propiedades, inquilino ve su contrato/pagos.
 """
 
+import secrets
+from datetime import datetime, timedelta
+
 from flask import Flask, jsonify, request, g
+from werkzeug.security import check_password_hash
+
 from database import get_db, crear_tablas
 import sqlite3
 
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
+
+# Duracion del token en dias (0 = no expira, se revoca con logout)
+TOKEN_TTL_DAYS = 30
 
 # Inicializa DB al primer arranque
 crear_tablas()
@@ -33,31 +48,110 @@ def query_all(sql, params=()):
 def row_to_dict(row):
     return dict(row) if row else None
 
-# --- Rutas básicas ---
+# --- Autenticacion ---
+
+def _parse_token():
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:].strip()
+    return None
+
+def current_user():
+    """Devuelve el usuario autenticado (dict) o None."""
+    token = _parse_token()
+    if not token:
+        return None
+    fila = query_one("""
+        SELECT t.token, t.fecha_expiracion, u.*
+        FROM tokens t JOIN usuarios u ON u.id = t.usuario_id
+        WHERE t.token = ? AND t.activo = 1
+    """, (token,))
+    if not fila:
+        return None
+    exp = fila["fecha_expiracion"]
+    if exp:
+        try:
+            if datetime.fromisoformat(exp) < datetime.now():
+                return None
+        except ValueError:
+            pass
+    return dict(fila)
+
+def require_auth():
+    user = current_user()
+    if not user:
+        return None
+    return user
+
+def _public_user(user):
+    return {"id": user["id"], "nombre": user["nombre"], "email": user["email"], "rol": user["rol"]}
+
+@app.route("/api/login", methods=["POST"])
+def login():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    if not email or not password:
+        return jsonify({"error": "Email y contrasena requeridos"}), 400
+
+    user = query_one("SELECT * FROM usuarios WHERE lower(email) = ?", (email,))
+    if not user or not check_password_hash(user["password_hash"], password):
+        return jsonify({"error": "Credenciales invalidas"}), 401
+    if not user["activo"]:
+        return jsonify({"error": "Usuario inactivo"}), 403
+
+    token = secrets.token_hex(32)
+    expiracion = (datetime.now() + timedelta(days=TOKEN_TTL_DAYS)).isoformat() if TOKEN_TTL_DAYS else None
+    g.db.execute(
+        "INSERT INTO tokens (usuario_id, token, dispositivo, fecha_expiracion) VALUES (?,?,?,?)",
+        (user["id"], token, data.get("dispositivo", ""), expiracion),
+    )
+    g.db.commit()
+    return jsonify({"token": token, "usuario": _public_user(dict(user))})
+
+@app.route("/api/me")
+def me():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    data = {"usuario": _public_user(user)}
+    # Datos de perfil segun rol
+    if user["rol"] == "propietario":
+        prop = query_one("SELECT id, tipo, documento, ciudad FROM propietarios WHERE usuario_id=?", (user["id"],))
+        data["perfil"] = row_to_dict(prop) or {}
+    elif user["rol"] == "inquilino":
+        inq = query_one("SELECT id, nombre, documento FROM inquilinos WHERE usuario_id=?", (user["id"],))
+        data["perfil"] = row_to_dict(inq) or {}
+    return jsonify(data)
+
+@app.route("/api/logout", methods=["POST"])
+def logout():
+    token = _parse_token()
+    if token:
+        g.db.execute("UPDATE tokens SET activo=0 WHERE token=?", (token,))
+        g.db.commit()
+    return jsonify({"ok": True})
+
+# --- Rutas basicas ---
 
 @app.route("/")
 def index():
     return jsonify({
-        "app": "GDP - Gestión de Propiedades",
-        "version": "1.0.0",
-        "jerarquia": "Administrador → Propietario → Propiedad → Unidad → Inquilino → Contrato → Pagos → Servicios → Alertas → Mantenimiento → Reportes",
+        "app": "GDP - Gestion de Propiedades",
+        "version": "1.1.0",
+        "jerarquia": "Administrador -> Propietario -> Propiedad -> Unidad -> Inquilino -> Contrato -> Pagos -> Servicios -> Alertas -> Mantenimiento -> Reportes",
         "endpoints": [
-            "/api/health",
-            "/api/propietarios",
-            "/api/propiedades",
-            "/api/unidades",
-            "/api/contratos",
-            "/api/pagos",
-            "/api/alertas",
-            "/api/reportes/resumen"
+            "/api/login", "/api/me", "/api/logout",
+            "/api/health", "/api/propietarios", "/api/propiedades",
+            "/api/unidades", "/api/contratos", "/api/pagos",
+            "/api/alertas", "/api/reportes/resumen"
         ],
-        "escalabilidad": "Casa = Propiedad con 1 Unidad. Inmobiliaria = Propietario tipo inmobiliaria. Sin refactorización."
+        "escalabilidad": "Casa = Propiedad con 1 Unidad. Inmobiliaria = Propietario tipo inmobiliaria."
     })
 
 @app.route("/api/health")
 def health():
-    # conteo rápido
-    tablas = ["usuarios","propietarios","propiedades","unidades","contratos","pagos"]
+    tablas = ["usuarios","propietarios","propiedades","unidades","contratos","pagos","tokens"]
     stats = {}
     for t in tablas:
         try:
@@ -66,9 +160,28 @@ def health():
             stats[t] = 0
     return jsonify({"status": "ok", "stats": stats})
 
-# Listados con paginación (escalable a miles)
+# --- Helpers de filtrado por rol ---
+
+def _id_propietario_del_usuario(usuario_id):
+    p = query_one("SELECT id FROM propietarios WHERE usuario_id=?", (usuario_id,))
+    return p["id"] if p else None
+
+def _id_unidades_del_propietario(propietario_id):
+    rows = query_all("""
+        SELECT u.id FROM unidades u
+        JOIN propiedades pr ON pr.id = u.propiedad_id
+        WHERE pr.propietario_id = ?
+    """, (propietario_id,))
+    return [r["id"] for r in rows]
+
+# --- Propietarios (solo superadmin) ---
 @app.route("/api/propietarios")
 def list_propietarios():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] != "superadmin":
+        return jsonify({"error": "No autorizado (solo superadmin)"}), 403
     page = int(request.args.get("page", 1))
     per_page = int(request.args.get("per_page", 20))
     offset = (page - 1) * per_page
@@ -79,24 +192,57 @@ def list_propietarios():
     """, (per_page, offset))
     return jsonify([row_to_dict(r) for r in rows])
 
+# --- Propiedades (superadmin: todas | propietario: solo las suyas) ---
 @app.route("/api/propiedades")
 def list_propiedades():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
     propietario_id = request.args.get("propietario_id")
     page = int(request.args.get("page", 1))
     per_page = int(request.args.get("per_page", 20))
     offset = (page - 1) * per_page
-    if propietario_id:
-        rows = query_all("SELECT * FROM propiedades WHERE propietario_id=? ORDER BY id LIMIT ? OFFSET ?", (propietario_id, per_page, offset))
+
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        if pid is None:
+            return jsonify([])
+        # Un propietario solo ve lo suyo, ignore propietario_id del query
+        rows = query_all("SELECT * FROM propiedades WHERE propietario_id=? ORDER BY id LIMIT ? OFFSET ?", (pid, per_page, offset))
+    elif user["rol"] == "superadmin":
+        if propietario_id:
+            rows = query_all("SELECT * FROM propiedades WHERE propietario_id=? ORDER BY id LIMIT ? OFFSET ?", (propietario_id, per_page, offset))
+        else:
+            rows = query_all("SELECT * FROM propiedades ORDER BY id LIMIT ? OFFSET ?", (per_page, offset))
     else:
-        rows = query_all("SELECT * FROM propiedades ORDER BY id LIMIT ? OFFSET ?", (per_page, offset))
+        return jsonify({"error": "No autorizado"}), 403
     return jsonify([row_to_dict(r) for r in rows])
 
 @app.route("/api/unidades")
 def list_unidades():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
     propiedad_id = request.args.get("propiedad_id")
     estado = request.args.get("estado")
     sql = "SELECT * FROM unidades WHERE 1=1"
     params = []
+
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        if pid is None:
+            return jsonify([])
+        sql += " AND propiedad_id IN (SELECT id FROM propiedades WHERE propietario_id=?)"
+        params.append(pid)
+    elif user["rol"] == "inquilino":
+        # inquilino ve la unidad de su contrato activo
+        inq = query_one("SELECT id FROM inquilinos WHERE usuario_id=?", (user["id"],))
+        if not inq:
+            return jsonify([])
+        sql += " AND id IN (SELECT unidad_id FROM contratos WHERE inquilino_id=? AND estado='activo')"
+        params.append(inq["id"])
+    # superadmin sin filtro adicional
+
     if propiedad_id:
         sql += " AND propiedad_id=?"
         params.append(propiedad_id)
@@ -104,46 +250,141 @@ def list_unidades():
         sql += " AND estado=?"
         params.append(estado)
     sql += " ORDER BY id LIMIT 50"
-    rows = query_all(sql, params)
-    return jsonify([row_to_dict(r) for r in rows])
+    return jsonify([row_to_dict(r) for r in query_all(sql, params)])
 
 @app.route("/api/contratos")
 def list_contratos():
-    rows = query_all("""
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    sql = """
         SELECT c.*, u.codigo as unidad_codigo, i.nombre as inquilino_nombre
         FROM contratos c
         JOIN unidades u ON u.id = c.unidad_id
         JOIN inquilinos i ON i.id = c.inquilino_id
-        ORDER BY c.fecha_inicio DESC LIMIT 50
-    """)
-    return jsonify([row_to_dict(r) for r in rows])
+    """
+    params = []
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        if pid is None:
+            return jsonify([])
+        sql += " WHERE u.propiedad_id IN (SELECT id FROM propiedades WHERE propietario_id=?)"
+        params.append(pid)
+    elif user["rol"] == "inquilino":
+        inq = query_one("SELECT id FROM inquilinos WHERE usuario_id=?", (user["id"],))
+        if not inq:
+            return jsonify([])
+        sql += " WHERE c.inquilino_id=?"
+        params.append(inq["id"])
+    sql += " ORDER BY c.fecha_inicio DESC LIMIT 50"
+    return jsonify([row_to_dict(r) for r in query_all(sql, params)])
 
 @app.route("/api/pagos")
 def list_pagos():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
     estado = request.args.get("estado", "")
-    if estado:
-        rows = query_all("SELECT * FROM pagos WHERE estado=? ORDER BY fecha_vencimiento DESC LIMIT 50", (estado,))
+    sql = "SELECT p.* FROM pagos p JOIN contratos c ON c.id = p.contrato_id"
+    params = []
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        if pid is None:
+            return jsonify([])
+        sql += " WHERE c.unidad_id IN (SELECT u.id FROM unidades u JOIN propiedades pr ON pr.id=u.propiedad_id WHERE pr.propietario_id=?)"
+        params.append(pid)
+        if estado:
+            sql += " AND p.estado=?"
+            params.append(estado)
+    elif user["rol"] == "inquilino":
+        inq = query_one("SELECT id FROM inquilinos WHERE usuario_id=?", (user["id"],))
+        if not inq:
+            return jsonify([])
+        sql += " WHERE c.inquilino_id=?"
+        params.append(inq["id"])
+        if estado:
+            sql += " AND p.estado=?"
+            params.append(estado)
     else:
-        rows = query_all("SELECT * FROM pagos ORDER BY fecha_vencimiento DESC LIMIT 50")
-    return jsonify([row_to_dict(r) for r in rows])
+        if estado:
+            sql += " WHERE p.estado=?"
+            params.append(estado)
+    sql += " ORDER BY p.fecha_vencimiento DESC LIMIT 50"
+    return jsonify([row_to_dict(r) for r in query_all(sql, params)])
 
 @app.route("/api/alertas")
 def list_alertas():
-    rows = query_all("SELECT * FROM alertas ORDER BY fecha_creacion DESC LIMIT 20")
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    rows = query_all("SELECT * FROM alertas WHERE usuario_destino_id=? ORDER BY fecha_creacion DESC LIMIT 20", (user["id"],))
     return jsonify([row_to_dict(r) for r in rows])
 
 @app.route("/api/reportes/resumen")
 def reporte_resumen():
-    # Reporte general (escalable: en producción usar vistas materializadas)
-    total_propiedades = query_one("SELECT COUNT(*) as c FROM propiedades")["c"]
-    total_unidades = query_one("SELECT COUNT(*) as c FROM unidades")["c"]
-    ocupadas = query_one("SELECT COUNT(*) as c FROM unidades WHERE estado='ocupada'")["c"]
-    disponibles = query_one("SELECT COUNT(*) as c FROM unidades WHERE estado='disponible'")["c"]
-    contratos_activos = query_one("SELECT COUNT(*) as c FROM contratos WHERE estado='activo'")["c"]
-    pagos_mora = query_one("SELECT COUNT(*) as c FROM pagos WHERE estado='mora'")["c"]
-    pagos_pendientes = query_one("SELECT COUNT(*) as c FROM pagos WHERE estado='pendiente'")["c"]
-    tickets_pendientes = query_one("SELECT COUNT(*) as c FROM mantenimiento WHERE estado='pendiente'")["c"]
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    vacio = {"total_propiedades": 0, "total_unidades": 0, "ocupadas": 0, "disponibles": 0, "ocupacion_pct": 0, "contratos_activos": 0, "pagos_mora": 0, "pagos_pendientes": 0, "mantenimiento_pendiente": 0}
+
+    # Scopes por tabla, segun rol
+    prop_scope = ""        # para propiedades (col propietario_id)
+    unidad_scope = ""      # para unidades (col propiedad_id)
+    man_scope = ""         # para mantenimiento (col unidad_id)
+    params_prop, params_unidad, params_man = [], [], []
+
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        if pid is None:
+            return jsonify(vacio)
+        prop_scope = "AND propietario_id = ?"
+        params_prop = [pid]
+        unidad_scope = "AND propiedad_id IN (SELECT id FROM propiedades WHERE propietario_id = ?)"
+        params_unidad = [pid]
+        man_scope = "AND unidad_id IN (SELECT u.id FROM unidades u JOIN propiedades pr ON pr.id = u.propiedad_id WHERE pr.propietario_id = ?)"
+        params_man = [pid]
+    elif user["rol"] == "inquilino":
+        inq = query_one("SELECT id FROM inquilinos WHERE usuario_id=?", (user["id"],))
+        if not inq:
+            return jsonify(vacio)
+        unidad_scope = "AND id IN (SELECT unidad_id FROM contratos WHERE inquilino_id = ? AND estado='activo')"
+        params_unidad = [inq["id"]]
+        man_scope = "AND unidad_id IN (SELECT unidad_id FROM contratos WHERE inquilino_id = ? AND estado='activo')"
+        params_man = [inq["id"]]
+        prop_scope = "AND id IN (SELECT propiedad_id FROM unidades WHERE id IN (SELECT unidad_id FROM contratos WHERE inquilino_id = ? AND estado='activo'))"
+        params_prop = [inq["id"]]
+    # superadmin: sin filtros
+
+    total_propiedades = query_one(f"SELECT COUNT(*) as c FROM propiedades WHERE 1=1 {prop_scope}", params_prop)["c"]
+    total_unidades = query_one(f"SELECT COUNT(*) as c FROM unidades WHERE 1=1 {unidad_scope}", params_unidad)["c"]
+    ocupadas = query_one(f"SELECT COUNT(*) as c FROM unidades WHERE estado='ocupada' {unidad_scope}", params_unidad)["c"]
+    disponibles = query_one(f"SELECT COUNT(*) as c FROM unidades WHERE estado='disponible' {unidad_scope}", params_unidad)["c"]
     ocupacion_pct = round((ocupadas / total_unidades * 100) if total_unidades else 0, 1)
+
+    # Clauses sobre joins con alias 'u' (columna unidad: u.id / u.propiedad_id)
+    if user["rol"] == "propietario":
+        u_clause = "AND u.propiedad_id IN (SELECT id FROM propiedades WHERE propietario_id = ?)"
+        u_params = [pid]
+    elif user["rol"] == "inquilino":
+        u_clause = "AND c.inquilino_id = ?"
+        u_params = [inq["id"]]
+    else:
+        u_clause = ""
+        u_params = []
+
+    contratos_activos = query_one(f"""
+        SELECT COUNT(*) as c FROM contratos c JOIN unidades u ON u.id=c.unidad_id
+        WHERE c.estado='activo' {u_clause}
+    """, u_params)["c"]
+    pagos_mora = query_one(f"""
+        SELECT COUNT(*) as c FROM pagos p JOIN contratos c ON c.id=p.contrato_id JOIN unidades u ON u.id=c.unidad_id
+        WHERE p.estado='mora' {u_clause}
+    """, u_params)["c"]
+    pagos_pendientes = query_one(f"""
+        SELECT COUNT(*) as c FROM pagos p JOIN contratos c ON c.id=p.contrato_id JOIN unidades u ON u.id=c.unidad_id
+        WHERE p.estado='pendiente' {u_clause}
+    """, u_params)["c"]
+    tickets_pendientes = query_one(f"SELECT COUNT(*) as c FROM mantenimiento WHERE estado='pendiente' {man_scope}", params_man)["c"]
 
     return jsonify({
         "total_propiedades": total_propiedades,
@@ -157,17 +398,20 @@ def reporte_resumen():
         "mantenimiento_pendiente": tickets_pendientes
     })
 
-# --- Crear contrato de ejemplo (valida regla 1 contrato activo por unidad) ---
+# --- Crear contrato (valida regla 1 contrato activo por unidad) ---
 @app.route("/api/contratos", methods=["POST"])
 def crear_contrato():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
     data = request.get_json() or {}
-    # validación mínima: unidad disponible
     unidad = query_one("SELECT * FROM unidades WHERE id=?", (data.get("unidad_id"),))
     if not unidad:
         return jsonify({"error": "Unidad no existe"}), 404
     if unidad["estado"] != "disponible":
         return jsonify({"error": f"Unidad no disponible (estado: {unidad['estado']})"}), 400
-    # verifica que no haya contrato activo previo
     activo = query_one("SELECT id FROM contratos WHERE unidad_id=? AND estado='activo'", (unidad["id"],))
     if activo:
         return jsonify({"error": "Ya existe contrato activo para esa unidad"}), 400
@@ -175,11 +419,11 @@ def crear_contrato():
     g.db.execute("""
         INSERT INTO contratos (unidad_id, inquilino_id, fecha_inicio, fecha_fin, canon, deposito, estado)
         VALUES (?,?,?,?,?,?,?)
-    """, (data["unidad_id"], data["inquilino_id"], data["fecha_inicio"], data["fecha_fin"], data["canon"], data.get("deposito",0), "activo"))
+    """, (data["unidad_id"], data["inquilino_id"], data["fecha_inicio"], data["fecha_fin"], data["canon"], data.get("deposito", 0), "activo"))
     g.db.execute("UPDATE unidades SET estado='ocupada' WHERE id=?", (unidad["id"],))
     g.db.commit()
     return jsonify({"ok": True}), 201
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    app.run(debug=True, port=5001, host="0.0.0.0")

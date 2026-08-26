@@ -439,6 +439,19 @@ def crear_tablas():
         )
     """)
 
+    # --- 19) Tokens de sesion (autenticacion movil) ---
+    conexion.execute("""
+        CREATE TABLE IF NOT EXISTS tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            token TEXT NOT NULL UNIQUE,
+            dispositivo TEXT DEFAULT '',
+            activo INTEGER NOT NULL DEFAULT 1,
+            fecha_creacion TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            fecha_expiracion TEXT
+        )
+    """)
+
     # Indices escalabilidad
     indices = [
         "CREATE INDEX IF NOT EXISTS idx_propiedades_propietario ON propiedades(propietario_id)",
@@ -464,6 +477,8 @@ def crear_tablas():
         "CREATE INDEX IF NOT EXISTS idx_documentos_entidad ON documentos(entidad_tipo, entidad_id)",
         "CREATE INDEX IF NOT EXISTS idx_logs_usuario_fecha ON logs(usuario_id, fecha)",
         "CREATE INDEX IF NOT EXISTS idx_descuentos_codigo ON descuentos(codigo)",
+        "CREATE INDEX IF NOT EXISTS idx_tokens_token ON tokens(token)",
+        "CREATE INDEX IF NOT EXISTS idx_tokens_usuario ON tokens(usuario_id)",
     ]
     for sql in indices:
         conexion.execute(sql)
@@ -599,7 +614,7 @@ if __name__ == "__main__":
     crear_tablas()
     print(f"Base de datos GDP lista en: {DB_PATH}")
     con = get_db()
-    for tabla in ["roles","usuarios","planes","suscripciones","descuentos","propietarios","propiedades","unidades","inquilinos","contratos","pagos","servicios","recibos","distribucion_servicios","alertas","notificaciones","mantenimiento","mantenimientos","documentos","reportes_generados","logs","configuracion"]:
+    for tabla in ["roles","usuarios","planes","suscripciones","descuentos","propietarios","propiedades","unidades","inquilinos","contratos","pagos","servicios","recibos","distribucion_servicios","alertas","notificaciones","mantenimiento","mantenimientos","documentos","reportes_generados","logs","configuracion","tokens"]:
         try:
             count = con.execute(f"SELECT COUNT(*) as c FROM {tabla}").fetchone()["c"]
             print(f"  {tabla}: {count}")
