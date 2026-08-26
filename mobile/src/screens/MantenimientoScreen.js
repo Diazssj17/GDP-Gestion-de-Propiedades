@@ -124,7 +124,7 @@ const s = StyleSheet.create({
   header: { fontSize: 20, fontWeight: '800' },
   sub: { fontSize: 12, marginBottom: 8 },
   filters: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 12, paddingBottom: 12 },
-  chip: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
+  chip: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, height: 32, justifyContent: 'center', alignItems: 'center' },
   chipText: { fontSize: 12, textTransform: 'capitalize' },
   card: { borderRadius: 12, padding: 14, marginBottom: 10 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
