@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { api } from '../api/client';
+import { api, BASE_URL } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 
 const estadoColor = { reportado: '#EA580C', pendiente: '#EA580C', en_revision: '#D97706', en_proceso: '#2563EB', resuelto: '#059669', cancelado: '#64748B' };
@@ -25,6 +25,11 @@ export default function MantenimientoScreen({ navigation }) {
   const resolver = async (t) => {
     try { await api.actualizarMantenimiento(t.id, { estado: 'resuelto' }); load(filtro); } catch (e) { console.log(e.message); }
   };
+
+  const fotosDe = (t) => {
+    try { return JSON.parse(t.fotografias || '[]'); } catch { return []; }
+  };
+  const fotoUrl = (name) => `${BASE_URL}/static/uploads/mantenimiento/${name}`;
 
   return (
     <View style={[s.container, { backgroundColor: c.background }]}>
@@ -60,7 +65,11 @@ export default function MantenimientoScreen({ navigation }) {
                 {item.costo_real ? <Text style={[s.meta, { color: c.success }]}>Costo ${Number(item.costo_real).toLocaleString('es-CO')}</Text> : null}
               </View>
               {item.fotografias && item.fotografias !== '[]' ? (
-                <Text style={[s.meta, { color: c.accent }]}>📷 {item.fotografias}</Text>
+                <View style={s.fotos}>
+                  {fotosDe(item).map((f, i) => (
+                    <Image key={i} source={{ uri: fotoUrl(f) }} style={s.foto} resizeMode="cover" />
+                  ))}
+                </View>
               ) : null}
               {item.estado !== 'resuelto' && item.estado !== 'cancelado' && (
                 <TouchableOpacity style={[s.resolveBtn, { borderColor: c.accent }]} onPress={() => resolver(item)}>
@@ -97,5 +106,7 @@ const s = StyleSheet.create({
   badgeText: { color: '#fff', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
   empty: { textAlign: 'center', marginTop: 20 },
   resolveBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, alignSelf: 'flex-start', marginTop: 10 },
+  fotos: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  foto: { width: 100, height: 100, borderRadius: 8 },
   fab: { position: 'absolute', right: 20, bottom: 24, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 5 },
 });
