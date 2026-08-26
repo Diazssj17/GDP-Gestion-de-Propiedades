@@ -72,7 +72,10 @@ export default function MantenimientoScreen({ navigation }) {
               <View style={s.tags}>
                 <View style={[s.tag, { backgroundColor: prioridadColor[item.prioridad] || '#64748B' }]}><Text style={s.tagText}>{item.prioridad}</Text></View>
                 <Text style={[s.meta, { color: c.textMuted }]}>{item.tipo} · {item.fecha_reporte?.slice(0, 10)}</Text>
-                {item.costo_real ? <Text style={[s.meta, { color: c.success }]}>Costo ${Number(item.costo_real).toLocaleString('es-CO')}</Text> : null}
+              </View>
+              <View style={s.costos}>
+                <Text style={[s.meta, { color: c.textSecondary }]}>Costo estimado: ${Number(item.costo_estimado || 0).toLocaleString('es-CO')}</Text>
+                <Text style={[s.meta, { color: c.success }]}>Costo real: ${Number(item.costo_real || 0).toLocaleString('es-CO')}</Text>
               </View>
               {item.fotografias && item.fotografias !== '[]' ? (
                 <View style={s.fotos}>
@@ -100,6 +103,8 @@ export default function MantenimientoScreen({ navigation }) {
                 </TouchableOpacity>
               ))}
             </View>
+            <Text style={[s.label, { color: c.textSecondary }]}>Costo estimado</Text>
+            <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} value={String(editar?.costo_estimado || 0)} editable={false} />
             <Text style={[s.label, { color: c.textSecondary }]}>Costo real $</Text>
             <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} value={costo} onChangeText={setCosto} keyboardType="numeric" placeholder="0" placeholderTextColor={c.placeholder} />
             <View style={s.modalBtns}>
@@ -127,6 +132,7 @@ const s = StyleSheet.create({
   meta: { fontSize: 11, marginTop: 3 },
   desc: { fontSize: 13, marginTop: 8 },
   tags: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' },
+  costos: { flexDirection: 'row', gap: 16, marginTop: 6 },
   tag: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
   tagText: { color: '#fff', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
   badge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
