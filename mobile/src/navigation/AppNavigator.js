@@ -10,7 +10,9 @@ import DashboardScreen from '../screens/DashboardScreen';
 import PropiedadesScreen from '../screens/PropiedadesScreen';
 import UnidadesScreen from '../screens/UnidadesScreen';
 import ContratosScreen from '../screens/ContratosScreen';
+import NuevoContratoScreen from '../screens/NuevoContratoScreen';
 import PagosScreen from '../screens/PagosScreen';
+import NuevoPagoScreen from '../screens/NuevoPagoScreen';
 import ServiciosScreen from '../screens/ServiciosScreen';
 import NuevoReciboScreen from '../screens/NuevoReciboScreen';
 import MantenimientoScreen from '../screens/MantenimientoScreen';
@@ -38,6 +40,26 @@ function ServiciosStack() {
   );
 }
 
+function ContratosStack() {
+  const { theme } = useTheme();
+  return (
+    <Stack.Navigator>
+      <Stack.Screen name="ContratosList" component={ContratosScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="NuevoContrato" component={NuevoContratoScreen} options={{ title: 'Nuevo contrato', headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerRight: () => <HeaderRight /> }} />
+    </Stack.Navigator>
+  );
+}
+
+function PagosStack() {
+  const { theme } = useTheme();
+  return (
+    <Stack.Navigator>
+      <Stack.Screen name="PagosList" component={PagosScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="NuevoPago" component={NuevoPagoScreen} options={{ title: 'Nuevo pago', headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerRight: () => <HeaderRight /> }} />
+    </Stack.Navigator>
+  );
+}
+
 export default function AppNavigator() {
   const { theme } = useTheme();
   const navTheme = { ...(theme.dark ? DarkTheme : DefaultTheme), colors: { ...(theme.dark ? DarkTheme : DefaultTheme).colors, primary: theme.colors.accent, background: theme.colors.background, card: theme.colors.card, text: theme.colors.text, border: theme.colors.border } };
@@ -61,8 +83,8 @@ export default function AppNavigator() {
       <Tab.Navigator screenOptions={screenOptions}>
         <Tab.Screen name="Dashboard" component={DashboardScreen} />
         <Tab.Screen name="Propiedades" component={PropiedadesStack} options={{ headerShown: false }} />
-        <Tab.Screen name="Contratos" component={ContratosScreen} />
-        <Tab.Screen name="Pagos" component={PagosScreen} />
+        <Tab.Screen name="Contratos" component={ContratosStack} options={{ headerShown: false }} />
+        <Tab.Screen name="Pagos" component={PagosStack} options={{ headerShown: false }} />
         <Tab.Screen name="Servicios" component={ServiciosStack} options={{ headerShown: false }} />
         <Tab.Screen name="Mantenimiento" component={MantenimientoScreen} />
       </Tab.Navigator>

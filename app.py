@@ -177,6 +177,13 @@ def _id_unidades_del_propietario(propietario_id):
     """, (propietario_id,))
     return [r["id"] for r in rows]
 
+def detectar_mora():
+    """Marca como 'mora' los pagos pendientes cuya fecha de vencimiento ya paso."""
+    g.db.execute(
+        "UPDATE pagos SET estado='mora' WHERE estado='pendiente' AND fecha_vencimiento != '' AND fecha_vencimiento < date('now')"
+    )
+    g.db.commit()
+
 # --- Propietarios (solo superadmin) ---
 @app.route("/api/propietarios")
 def list_propietarios():
@@ -287,8 +294,9 @@ def list_pagos():
     user = require_auth()
     if not user:
         return jsonify({"error": "No autenticado"}), 401
+    detectar_mora()
     estado = request.args.get("estado", "")
-    sql = "SELECT p.* FROM pagos p JOIN contratos c ON c.id = p.contrato_id"
+    sql = "SELECT p.*, c.canon, c.unidad_id, u.codigo as unidad_codigo, i.nombre as inquilino_nombre FROM pagos p JOIN contratos c ON c.id = p.contrato_id JOIN unidades u ON u.id = c.unidad_id JOIN inquilinos i ON i.id = c.inquilino_id"
     params = []
     if user["rol"] == "propietario":
         pid = _id_propietario_del_usuario(user["id"])
@@ -328,6 +336,7 @@ def reporte_resumen():
     user = require_auth()
     if not user:
         return jsonify({"error": "No autenticado"}), 401
+    detectar_mora()
     vacio = {"total_propiedades": 0, "total_unidades": 0, "ocupadas": 0, "disponibles": 0, "ocupacion_pct": 0, "contratos_activos": 0, "pagos_mora": 0, "pagos_pendientes": 0, "mantenimiento_pendiente": 0}
 
     # Scopes por tabla, segun rol
@@ -418,14 +427,124 @@ def crear_contrato():
     activo = query_one("SELECT id FROM contratos WHERE unidad_id=? AND estado='activo'", (unidad["id"],))
     if activo:
         return jsonify({"error": "Ya existe contrato activo para esa unidad"}), 400
+    inquilino = query_one("SELECT id FROM inquilinos WHERE id=?", (data.get("inquilino_id"),))
+    if not inquilino:
+        return jsonify({"error": "Inquilino no existe"}), 404
+    if not data.get("fecha_inicio") or not data.get("fecha_fin") or not data.get("canon"):
+        return jsonify({"error": "fecha_inicio, fecha_fin y canon son requeridos"}), 400
 
     g.db.execute("""
-        INSERT INTO contratos (unidad_id, inquilino_id, fecha_inicio, fecha_fin, canon, deposito, estado)
-        VALUES (?,?,?,?,?,?,?)
-    """, (data["unidad_id"], data["inquilino_id"], data["fecha_inicio"], data["fecha_fin"], data["canon"], data.get("deposito", 0), "activo"))
+        INSERT INTO contratos (unidad_id, inquilino_id, fecha_inicio, fecha_fin, canon, deposito, dia_limite_pago, estado)
+        VALUES (?,?,?,?,?,?,?,?)
+    """, (data["unidad_id"], data["inquilino_id"], data["fecha_inicio"], data["fecha_fin"],
+          data["canon"], data.get("deposito", 0), data.get("dia_limite_pago", 5), "activo"))
     g.db.execute("UPDATE unidades SET estado='ocupada' WHERE id=?", (unidad["id"],))
     g.db.commit()
     return jsonify({"ok": True}), 201
+
+
+# --- Inquilinos ---
+@app.route("/api/inquilinos")
+def list_inquilinos():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] == "superadmin":
+        rows = query_all("SELECT * FROM inquilinos ORDER BY nombre LIMIT 100")
+    elif user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        if pid is None:
+            return jsonify([])
+        rows = query_all("""
+            SELECT DISTINCT i.* FROM inquilinos i
+            JOIN contratos c ON c.inquilino_id = i.id
+            JOIN unidades u ON u.id = c.unidad_id
+            JOIN propiedades pr ON pr.id = u.propiedad_id
+            WHERE pr.propietario_id = ?
+            ORDER BY i.nombre
+        """, (pid,))
+    else:
+        rows = query_all("SELECT * FROM inquilinos WHERE usuario_id=?", (user["id"],))
+    return jsonify([row_to_dict(r) for r in rows])
+
+
+@app.route("/api/inquilinos", methods=["POST"])
+def crear_inquilino():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get("nombre") or "").strip()
+    if not nombre:
+        return jsonify({"error": "nombre requerido"}), 400
+    cur = g.db.execute("""
+        INSERT INTO inquilinos (nombre, documento, email, telefono, direccion, referencia)
+        VALUES (?,?,?,?,?,?)
+    """, (nombre, data.get("documento", ""), data.get("email", ""), data.get("telefono", ""),
+          data.get("direccion", ""), data.get("referencia", "")))
+    g.db.commit()
+    return jsonify({"ok": True, "id": cur.lastrowid}), 201
+
+
+# --- Pagos (crear + registrar con mora) ---
+@app.route("/api/pagos", methods=["POST"])
+def crear_pago():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
+    data = request.get_json(silent=True) or {}
+    contrato = query_one("SELECT * FROM contratos WHERE id=?", (data.get("contrato_id"),))
+    if not contrato:
+        return jsonify({"error": "Contrato no existe"}), 404
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        unidad = query_one("SELECT * FROM unidades WHERE id=?", (contrato["unidad_id"],))
+        if pid is None or query_one("SELECT id FROM propiedades WHERE id=? AND propietario_id=?", (unidad["propiedad_id"], pid)) is None:
+            return jsonify({"error": "No autorizado sobre ese contrato"}), 403
+    monto = data.get("monto")
+    if monto is None:
+        return jsonify({"error": "monto requerido"}), 400
+    fecha_vencimiento = data.get("fecha_vencimiento") or ""
+    estado = "pendiente"
+    if fecha_vencimiento and fecha_vencimiento < datetime.now().strftime("%Y-%m-%d"):
+        estado = "mora"
+    cur = g.db.execute("""
+        INSERT INTO pagos (contrato_id, concepto, periodo, monto, fecha_vencimiento, estado, notas)
+        VALUES (?,?,?,?,?,?,?)
+    """, (contrato["id"], data.get("concepto", "canon"), data.get("periodo", ""), monto,
+          fecha_vencimiento, estado, data.get("notas", "")))
+    g.db.commit()
+    return jsonify({"ok": True, "id": cur.lastrowid, "estado": estado}), 201
+
+
+@app.route("/api/pagos/<int:pago_id>", methods=["PATCH"])
+def registrar_pago(pago_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
+    pago = query_one("SELECT * FROM pagos WHERE id=?", (pago_id,))
+    if not pago:
+        return jsonify({"error": "Pago no existe"}), 404
+    data = request.get_json(silent=True) or {}
+    fecha_pago = data.get("fecha_pago") or datetime.now().strftime("%Y-%m-%d")
+    metodo = data.get("metodo", "")
+    comprobante = data.get("comprobante", "")
+    monto_pagado = data.get("monto_pagado")
+
+    if monto_pagado is not None and float(monto_pagado) < float(pago["monto"]):
+        estado = "parcial"
+    else:
+        estado = "pagado"
+    g.db.execute("UPDATE pagos SET fecha_pago=?, metodo=?, comprobante=?, estado=? WHERE id=?",
+                 (fecha_pago, metodo, comprobante, estado, pago_id))
+    g.db.commit()
+    return jsonify({"ok": True, "estado": estado})
 
 
 # --- Servicios y Recibos (servicios compartidos, modelo v2 11-12) ---
