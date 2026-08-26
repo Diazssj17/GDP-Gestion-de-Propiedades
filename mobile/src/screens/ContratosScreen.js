@@ -14,6 +14,7 @@ export default function ContratosScreen({ navigation }) {
   // modal renovar
   const [renovar, setRenovar] = useState(null);
   const [nuevaFecha, setNuevaFecha] = useState('');
+  const [nuevoCanon, setNuevoCanon] = useState('');
   const [guardando, setGuardando] = useState(false);
 
   const load = useCallback(async () => {
@@ -28,11 +29,12 @@ export default function ContratosScreen({ navigation }) {
     let d;
     try { d = new Date(fin); d.setFullYear(d.getFullYear() + 1); } catch { d = new Date(); }
     setNuevaFecha(d.toISOString().slice(0, 10));
+    setNuevoCanon(String(item.canon));
     setRenovar(item);
   };
   const confirmarRenovar = async () => {
     setGuardando(true);
-    try { await api.actualizarContrato(renovar.id, { accion: 'renovar', nueva_fecha_fin: nuevaFecha }); setRenovar(null); load(); }
+    try { await api.actualizarContrato(renovar.id, { accion: 'renovar', nueva_fecha_fin: nuevaFecha, canon: Number(nuevoCanon) || 0 }); setRenovar(null); load(); }
     catch (e) { console.log(e.message); } finally { setGuardando(false); }
   };
   const terminar = (item) => {
@@ -96,6 +98,8 @@ export default function ContratosScreen({ navigation }) {
             <Text style={[s.meta, { color: c.textSecondary }]}>{renovar?.unidad_codigo} → {renovar?.inquilino_nombre}</Text>
             <Text style={[s.label, { color: c.textSecondary }]}>Nueva fecha de finalización</Text>
             <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} value={nuevaFecha} onChangeText={setNuevaFecha} placeholder="2027-12-31" placeholderTextColor={c.placeholder} />
+            <Text style={[s.label, { color: c.textSecondary }]}>Nuevo canon $</Text>
+            <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} value={nuevoCanon} onChangeText={setNuevoCanon} keyboardType="numeric" placeholder="900000" placeholderTextColor={c.placeholder} />
             <Text style={[s.hint, { color: c.textMuted }]}>La unidad sigue ocupada y el contrato continúa activo.</Text>
             <View style={s.modalBtns}>
               <TouchableOpacity style={[s.btn, s.cancel, { borderColor: c.border }]} onPress={() => setRenovar(null)}><Text style={{ color: c.textSecondary }}>Cancelar</Text></TouchableOpacity>

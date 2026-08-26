@@ -481,7 +481,11 @@ def actualizar_contrato(contrato_id):
             nueva_fecha_fin = _sumar_meses(c["fecha_fin"] or c["fecha_inicio"], int(data["meses"]))
         if not nueva_fecha_fin:
             return jsonify({"error": "nueva_fecha_fin o meses requerido"}), 400
-        g.db.execute("UPDATE contratos SET fecha_fin=?, estado='activo' WHERE id=?", (nueva_fecha_fin, contrato_id))
+        canon = data.get("canon")
+        if canon is not None:
+            g.db.execute("UPDATE contratos SET fecha_fin=?, canon=?, estado='activo' WHERE id=?", (nueva_fecha_fin, canon, contrato_id))
+        else:
+            g.db.execute("UPDATE contratos SET fecha_fin=?, estado='activo' WHERE id=?", (nueva_fecha_fin, contrato_id))
         g.db.execute("UPDATE unidades SET estado='ocupada' WHERE id=?", (c["unidad_id"],))
         g.db.commit()
         return jsonify({"ok": True, "estado": "activo", "fecha_fin": nueva_fecha_fin})
