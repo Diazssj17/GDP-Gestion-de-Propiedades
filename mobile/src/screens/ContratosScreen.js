@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl, Modal, TextInput, Alert } from 'react-native';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl, Modal, TextInput, Alert, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { api } from '../api/client';
+import { api, BASE_URL } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 
 const estadoColor = { activo: '#059669', pendiente: '#EA580C', vencido: '#DC2626', proximo_a_vencer: '#D97706', terminado: '#64748B', cancelado: '#64748B' };
@@ -68,6 +68,11 @@ export default function ContratosScreen({ navigation }) {
               <View style={[s.badge, { backgroundColor: estadoColor[item.estado] || '#64748B' }]}><Text style={s.badgeText}>{item.estado}</Text></View>
             </View>
             <Text style={[s.meta, { color: c.textSecondary }]}>{item.fecha_inicio} → {item.fecha_fin} · Canon ${Number(item.canon).toLocaleString('es-CO')}</Text>
+            {item.documento ? (
+              <TouchableOpacity onPress={() => Linking.openURL(`${BASE_URL}/static/uploads/contratos/${item.documento}`)}>
+                <Text style={[s.docLink, { color: c.accent }]}>📄 Ver documento adjunto</Text>
+              </TouchableOpacity>
+            ) : null}
             {item.estado === 'activo' || item.estado === 'proximo_a_vencer' || item.estado === 'vencido' ? (
               <View style={s.actions}>
                 <TouchableOpacity style={[s.actBtn, { borderColor: c.accent }]} onPress={() => abrirRenovar(item)}>
@@ -122,6 +127,7 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontWeight: '700' },
   meta: { fontSize: 12, marginTop: 4 },
+  docLink: { fontSize: 12, marginTop: 6, fontWeight: '600' },
   badge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
   badgeText: { color: '#fff', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
   empty: { textAlign: 'center', marginTop: 20 },

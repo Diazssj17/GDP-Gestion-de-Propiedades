@@ -433,14 +433,15 @@ def crear_contrato():
     if not data.get("fecha_inicio") or not data.get("fecha_fin") or not data.get("canon"):
         return jsonify({"error": "fecha_inicio, fecha_fin y canon son requeridos"}), 400
 
+    documento = _guardar_foto(data.get("documento_base64"), sub="contratos", prefix="doc")
     g.db.execute("""
-        INSERT INTO contratos (unidad_id, inquilino_id, fecha_inicio, fecha_fin, canon, deposito, dia_limite_pago, estado)
-        VALUES (?,?,?,?,?,?,?,?)
+        INSERT INTO contratos (unidad_id, inquilino_id, fecha_inicio, fecha_fin, canon, deposito, dia_limite_pago, estado, documento)
+        VALUES (?,?,?,?,?,?,?,?,?)
     """, (data["unidad_id"], data["inquilino_id"], data["fecha_inicio"], data["fecha_fin"],
-          data["canon"], data.get("deposito", 0), data.get("dia_limite_pago", 5), "activo"))
+          data["canon"], data.get("deposito", 0), data.get("dia_limite_pago", 5), "activo", documento))
     g.db.execute("UPDATE unidades SET estado='ocupada' WHERE id=?", (unidad["id"],))
     g.db.commit()
-    return jsonify({"ok": True}), 201
+    return jsonify({"ok": True, "documento": documento}), 201
 
 
 def _sumar_meses(fecha, meses):

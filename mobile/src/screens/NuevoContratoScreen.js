@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import Picker from '../components/Picker';
@@ -25,6 +28,7 @@ export default function NuevoContratoScreen({ navigation }) {
   const [canon, setCanon] = useState('');
   const [deposito, setDeposito] = useState('');
   const [diaLimite, setDiaLimite] = useState('5');
+  const [documento, setDocumento] = useState(null); // { name, mime, base64 }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -42,6 +46,17 @@ export default function NuevoContratoScreen({ navigation }) {
 
   const disponibles = unidades.filter(u => u.estado === 'disponible');
 
+  const adjuntarDocumento = async () => {
+    const res = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], copyToCacheDirectory: true });
+    if (res.canceled || !res.assets?.length) return;
+    const asset = res.assets[0];
+    try {
+      const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+      const mime = asset.mimeType || 'application/pdf';
+      setDocumento({ name: asset.name, mime, base64: `data:${mime};base64,${base64}` });
+    } catch (e) { setError('No se pudo leer el documento'); }
+  };
+
   const guardar = async () => {
     setError('');
     if (!unidadId) return setError('Selecciona una unidad disponible');
@@ -54,7 +69,7 @@ export default function NuevoContratoScreen({ navigation }) {
         const nuevo = await api.crearInquilino({ nombre: nuevoNombre, documento: nuevoDoc, telefono: nuevoTel });
         inqId = nuevo.id;
       }
-      await api.crearContrato({ unidad_id: unidadId, inquilino_id: inqId, fecha_inicio: fechaInicio, fecha_fin: fechaFin, canon: Number(canon), deposito: Number(deposito || 0), dia_limite_pago: Number(diaLimite || 5) });
+      await api.crearContrato({ unidad_id: unidadId, inquilino_id: inqId, fecha_inicio: fechaInicio, fecha_fin: fechaFin, canon: Number(canon), deposito: Number(deposito || 0), dia_limite_pago: Number(diaLimite || 5), documento_base64: documento?.base64 || null });
       navigation.goBack();
     } catch (e) {
       setError(e?.response?.data?.error || 'Error al guardar');
@@ -98,6 +113,13 @@ export default function NuevoContratoScreen({ navigation }) {
       </View>
       <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} placeholder="Día límite de pago (ej. 5)" placeholderTextColor={c.placeholder} value={diaLimite} onChangeText={setDiaLimite} keyboardType="numeric" />
 
+      <Text style={[s.section, { color: c.text }]}>Documentación</Text>
+      <TouchableOpacity style={[s.photoBtn, { backgroundColor: c.card, borderColor: c.border }]} onPress={adjuntarDocumento}>
+        <Ionicons name="document-attach" size={18} color={c.accent} />
+        <Text style={{ color: c.textSecondary }}>{documento ? documento.name : 'Adjuntar contrato PDF / documentación'}</Text>
+      </TouchableOpacity>
+      {documento ? <Text style={[s.docHint, { color: c.success }]}>✓ {documento.name} adjunto</Text> : null}
+
       {error ? <Text style={s.error}>{error}</Text> : null}
       <TouchableOpacity style={[s.btn, { backgroundColor: c.primary }]} onPress={guardar} disabled={loading}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Crear contrato</Text>}
@@ -114,6 +136,8 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', gap: 10 },
   half: { flex: 1 },
   toggle: { borderWidth: 1, borderRadius: 10, padding: 12, alignItems: 'center', marginBottom: 12 },
+  photoBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, padding: 12, marginTop: 4, justifyContent: 'center' },
+  docHint: { fontSize: 12, marginTop: 8, fontWeight: '600' },
   error: { color: '#DC2626', fontSize: 13, marginTop: 10, textAlign: 'center' },
   btn: { borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
