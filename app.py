@@ -669,6 +669,38 @@ def registrar_pago(pago_id):
     return jsonify({"ok": True, "estado": estado, "pagado": nuevo_pagado, "monto": pago["monto"], "restante": round(float(pago["monto"]) - nuevo_pagado, 2)})
 
 
+@app.route("/api/pagos/<int:pago_id>")
+def detalle_pago(pago_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    pago = query_one("""
+        SELECT p.*, c.canon, c.unidad_id, u.codigo as unidad_codigo, u.nombre as unidad_nombre,
+               i.nombre as inquilino_nombre, i.documento as inquilino_documento, i.telefono as inquilino_telefono
+        FROM pagos p
+        JOIN contratos c ON c.id = p.contrato_id
+        JOIN unidades u ON u.id = c.unidad_id
+        JOIN inquilinos i ON i.id = c.inquilino_id
+        WHERE p.id = ?
+    """, (pago_id,))
+    if not pago:
+        return jsonify({"error": "Pago no existe"}), 404
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        unidad = query_one("SELECT propiedad_id FROM unidades WHERE id=?", (pago["unidad_id"],))
+        if pid is None or query_one("SELECT id FROM propiedades WHERE id=? AND propietario_id=?", (unidad["propiedad_id"], pid)) is None:
+            return jsonify({"error": "No autorizado"}), 403
+    elif user["rol"] == "inquilino":
+        inq = query_one("SELECT id FROM inquilinos WHERE usuario_id=?", (user["id"],))
+        ctr = query_one("SELECT inquilino_id FROM contratos WHERE id=?", (pago["contrato_id"],))
+        if not inq or ctr["inquilino_id"] != inq["id"]:
+            return jsonify({"error": "No autorizado"}), 403
+    abonos = query_all("SELECT * FROM abonos WHERE pago_id=? ORDER BY fecha DESC, id DESC", (pago_id,))
+    d = row_to_dict(pago)
+    d["abonos"] = [row_to_dict(a) for a in abonos]
+    return jsonify(d)
+
+
 # --- Mantenimiento (tickets con camara) ---
 @app.route("/api/mantenimientos")
 def list_mantenimientos():

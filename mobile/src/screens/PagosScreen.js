@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Modal, TextInput, RefreshControl } from 'react-native';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Modal, TextInput, RefreshControl, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
@@ -14,6 +14,9 @@ export default function PagosScreen({ navigation }) {
   const [filtro, setFiltro] = useState('');
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  // modal detalle
+  const [detalle, setDetalle] = useState(null);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
   // modal abono
   const [registrar, setRegistrar] = useState(null);
   const [metodo, setMetodo] = useState('efectivo');
@@ -28,7 +31,14 @@ export default function PagosScreen({ navigation }) {
   useEffect(() => { load(''); }, [load]);
 
   const restanteDe = (p) => Math.max(0, Number(p.monto) - Number(p.pagado || 0));
-  const abrirRegistrar = (p) => { setRegistrar(p); setMetodo('efectivo'); setMontoAbono(String(restanteDe(p))); };
+
+  const verDetalle = async (p) => {
+    setCargandoDetalle(true);
+    setDetalle({ ...p, abonos: [] });
+    try { setDetalle(await api.detallePago(p.id)); } catch (e) { console.log(e.message); }
+    setCargandoDetalle(false);
+  };
+  const abrirAbonar = (p) => { setDetalle(null); setRegistrar(p); setMetodo('efectivo'); setMontoAbono(String(restanteDe(p))); };
 
   const abonar = async (monto) => {
     setGuardando(true);
@@ -40,11 +50,12 @@ export default function PagosScreen({ navigation }) {
   };
 
   const fmt = n => `$${Number(n).toLocaleString('es-CO')}`;
+  const esAbonable = (p) => p.estado === 'pendiente' || p.estado === 'mora' || p.estado === 'parcial';
 
   return (
     <View style={[s.container, { backgroundColor: c.background }]}>
       <Text style={[s.header, { color: c.text }]}>Pagos</Text>
-      <Text style={[s.sub, { color: c.textSecondary }]}>Toca un pago para abonar (total o parcial)</Text>
+      <Text style={[s.sub, { color: c.textSecondary }]}>Toca un pago para ver el detalle</Text>
       <View style={s.filters}>
         {['', 'pendiente', 'mora', 'parcial', 'pagado'].map(e => (
           <TouchableOpacity key={e || 'todos'} onPress={() => { setFiltro(e); load(e); }} style={[s.chip, { backgroundColor: c.card, borderColor: c.border }, filtro === e && { backgroundColor: c.chipActive, borderColor: c.chipActive }]}>
@@ -59,34 +70,69 @@ export default function PagosScreen({ navigation }) {
           refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load(filtro)} tintColor={c.accent} />}
           contentContainerStyle={{ paddingBottom: 90 }}
           ListEmptyComponent={<Text style={[s.empty, { color: c.textMuted }]}>Sin pagos en este filtro.</Text>}
-          renderItem={({ item }) => {
-            const esAbonable = item.estado === 'pendiente' || item.estado === 'mora' || item.estado === 'parcial';
-            return (
-              <TouchableOpacity style={[s.card, { backgroundColor: c.card }]} onPress={() => esAbonable && abrirRegistrar(item)} activeOpacity={0.8}>
-                <View style={s.row}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[s.title, { color: c.text }]}>{fmt(item.monto)} · {item.periodo || item.concepto}</Text>
-                    <Text style={[s.meta, { color: c.textSecondary }]}>{item.unidad_codigo} · {item.inquilino_nombre}</Text>
-                  </View>
-                  <View style={[s.badge, { backgroundColor: colors[item.estado] || '#64748B' }]}><Text style={s.badgeText}>{item.estado}</Text></View>
+          renderItem={({ item }) => (
+            <TouchableOpacity style={[s.card, { backgroundColor: c.card }]} onPress={() => verDetalle(item)} activeOpacity={0.8}>
+              <View style={s.row}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.title, { color: c.text }]}>{fmt(item.monto)} · {item.periodo || item.concepto}</Text>
+                  <Text style={[s.meta, { color: c.textSecondary }]}>{item.unidad_codigo} · {item.inquilino_nombre}</Text>
                 </View>
-                {Number(item.pagado) > 0 ? (
-                  <Text style={[s.meta, { color: c.success }]}>Abonado {fmt(item.pagado)} de {fmt(item.monto)}</Text>
-                ) : null}
-                <Text style={[s.meta, { color: c.textSecondary }]}>Vence {item.fecha_vencimiento}{item.fecha_pago ? ` · Último abono ${item.fecha_pago}` : ''}</Text>
-                {item.metodo ? (
-                  <Text style={[s.meta, { color: c.info, fontWeight: '600' }]}>Método de pago: {METODO_LABEL[item.metodo] || item.metodo}</Text>
-                ) : null}
-                {esAbonable && <Text style={[s.registrar, { color: c.accent }]}>Abonar →</Text>}
-              </TouchableOpacity>
-            );
-          }}
+                <View style={[s.badge, { backgroundColor: colors[item.estado] || '#64748B' }]}><Text style={s.badgeText}>{item.estado}</Text></View>
+              </View>
+              {Number(item.pagado) > 0 ? <Text style={[s.meta, { color: c.success }]}>Abonado {fmt(item.pagado)} de {fmt(item.monto)}</Text> : null}
+              <Text style={[s.meta, { color: c.textSecondary }]}>Vence {item.fecha_vencimiento}{item.fecha_pago ? ` · Último abono ${item.fecha_pago}` : ''}</Text>
+              {item.metodo ? <Text style={[s.meta, { color: c.info, fontWeight: '600' }]}>Método: {METODO_LABEL[item.metodo] || item.metodo}</Text> : null}
+              <Text style={[s.registrar, { color: c.accent }]}>Ver detalle →</Text>
+            </TouchableOpacity>
+          )}
         />
       )}
       <TouchableOpacity style={[s.fab, { backgroundColor: c.primary }]} onPress={() => navigation.navigate('NuevoPago')}>
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
 
+      {/* Modal detalle */}
+      <Modal visible={!!detalle} transparent animationType="slide">
+        <View style={s.overlay}>
+          <View style={[s.modal, { backgroundColor: c.card }]}>
+            <ScrollView>
+              <View style={s.detalleHead}>
+                <Text style={[s.modalTitle, { color: c.text }]}>{detalle?.periodo || detalle?.concepto}</Text>
+                <View style={[s.badge, { backgroundColor: colors[detalle?.estado] || '#64748B' }]}><Text style={s.badgeText}>{detalle?.estado}</Text></View>
+              </View>
+              <View style={[s.resumen, { backgroundColor: theme.dark ? '#12243B' : '#EFF6FF' }]}>
+                <Text style={[s.meta, { color: c.textSecondary }]}>Total: {fmt(detalle?.monto || 0)}</Text>
+                <Text style={[s.meta, { color: c.textSecondary }]}>Abonado: {fmt(detalle?.pagado || 0)}</Text>
+                <Text style={[s.restante, { color: c.danger }]}>Restante: {fmt(restanteDe(detalle || {}))}</Text>
+              </View>
+              <View style={s.detalleRow}><Text style={[s.detalleLabel, { color: c.textSecondary }]}>Inquilino</Text><Text style={[s.detalleVal, { color: c.text }]}>{detalle?.inquilino_nombre}{detalle?.inquilino_documento ? ` · ${detalle.inquilino_documento}` : ''}</Text></View>
+              <View style={s.detalleRow}><Text style={[s.detalleLabel, { color: c.textSecondary }]}>Unidad</Text><Text style={[s.detalleVal, { color: c.text }]}>{detalle?.unidad_codigo}{detalle?.unidad_nombre ? ` - ${detalle.unidad_nombre}` : ''}</Text></View>
+              <View style={s.detalleRow}><Text style={[s.detalleLabel, { color: c.textSecondary }]}>Vencimiento</Text><Text style={[s.detalleVal, { color: c.text }]}>{detalle?.fecha_vencimiento}</Text></View>
+              <View style={s.detalleRow}><Text style={[s.detalleLabel, { color: c.textSecondary }]}>Método</Text><Text style={[s.detalleVal, { color: c.text }]}>{detalle?.metodo ? METODO_LABEL[detalle.metodo] || detalle.metodo : '—'}</Text></View>
+              <View style={s.detalleRow}><Text style={[s.detalleLabel, { color: c.textSecondary }]}>Último pago</Text><Text style={[s.detalleVal, { color: c.text }]}>{detalle?.fecha_pago || '—'}</Text></View>
+
+              <Text style={[s.abonosTitle, { color: c.text }]}>Historial de abonos</Text>
+              {cargandoDetalle ? <ActivityIndicator color={c.accent} style={{ marginTop: 8 }} /> : (
+                detalle?.abonos?.length ? detalle.abonos.map(a => (
+                  <View key={a.id} style={[s.abono, { borderBottomColor: c.border }]}>
+                    <Text style={[s.abonoMonto, { color: c.text }]}>{fmt(a.monto)}</Text>
+                    <Text style={[s.meta, { color: c.textSecondary }]}>{a.fecha} · {METODO_LABEL[a.metodo] || a.metodo || '—'}</Text>
+                  </View>
+                )) : <Text style={[s.empty, { color: c.textMuted }]}>Sin abonos registrados.</Text>
+              )}
+
+              <View style={s.modalBtns}>
+                <TouchableOpacity style={[s.btn, s.cancel, { borderColor: c.border }]} onPress={() => setDetalle(null)}><Text style={{ color: c.textSecondary }}>Cerrar</Text></TouchableOpacity>
+                {detalle && esAbonable(detalle) ? (
+                  <TouchableOpacity style={[s.btn, { backgroundColor: c.primary }]} onPress={() => abrirAbonar(detalle)}><Text style={s.btnText}>Abonar</Text></TouchableOpacity>
+                ) : null}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal abono */}
       <Modal visible={!!registrar} transparent animationType="slide">
         <View style={s.overlay}>
           <View style={[s.modal, { backgroundColor: c.card }]}>
@@ -139,10 +185,17 @@ const s = StyleSheet.create({
   empty: { textAlign: 'center', marginTop: 20 },
   fab: { position: 'absolute', right: 20, bottom: 24, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 5 },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modal: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 30 },
+  modal: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 30, maxHeight: '85%' },
   modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 4 },
+  detalleHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   resumen: { borderRadius: 10, padding: 12, marginTop: 12 },
   restante: { fontSize: 14, fontWeight: '800', marginTop: 4 },
+  detalleRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
+  detalleLabel: { fontSize: 12, fontWeight: '600' },
+  detalleVal: { fontSize: 13, fontWeight: '600' },
+  abonosTitle: { fontSize: 14, fontWeight: '800', marginTop: 16, marginBottom: 4 },
+  abono: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  abonoMonto: { fontSize: 13, fontWeight: '700' },
   label: { fontSize: 12, fontWeight: '600', marginTop: 12, marginBottom: 4 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
   methods: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
