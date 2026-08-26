@@ -593,16 +593,31 @@ def registrar_pago(pago_id):
     fecha_pago = data.get("fecha_pago") or datetime.now().strftime("%Y-%m-%d")
     metodo = data.get("metodo", "")
     comprobante = data.get("comprobante", "")
-    monto_pagado = data.get("monto_pagado")
 
-    if monto_pagado is not None and float(monto_pagado) < float(pago["monto"]):
-        estado = "parcial"
-    else:
+    # monto_abono = lo que se abona AHORA; si no viene, se abona el total restante
+    restante = float(pago["monto"]) - float(pago["pagado"] or 0)
+    monto_abono = data.get("monto_abono")
+    if monto_abono is None:
+        monto_abono = restante
+    monto_abono = float(monto_abono)
+    if monto_abono <= 0:
+        return jsonify({"error": "El abono debe ser mayor a 0"}), 400
+
+    g.db.execute("""
+        INSERT INTO abonos (pago_id, monto, metodo, comprobante, fecha)
+        VALUES (?,?,?,?,?)
+    """, (pago_id, monto_abono, metodo, comprobante, fecha_pago))
+
+    nuevo_pagado = round((float(pago["pagado"] or 0) + monto_abono), 2)
+    if nuevo_pagado >= float(pago["monto"]):
         estado = "pagado"
-    g.db.execute("UPDATE pagos SET fecha_pago=?, metodo=?, comprobante=?, estado=? WHERE id=?",
-                 (fecha_pago, metodo, comprobante, estado, pago_id))
+        nuevo_pagado = float(pago["monto"])
+    else:
+        estado = "parcial"
+    g.db.execute("UPDATE pagos SET pagado=?, fecha_pago=?, metodo=?, comprobante=?, estado=? WHERE id=?",
+                 (nuevo_pagado, fecha_pago, metodo, comprobante, estado, pago_id))
     g.db.commit()
-    return jsonify({"ok": True, "estado": estado})
+    return jsonify({"ok": True, "estado": estado, "pagado": nuevo_pagado, "monto": pago["monto"], "restante": round(float(pago["monto"]) - nuevo_pagado, 2)})
 
 
 # --- Mantenimiento (tickets con camara) ---

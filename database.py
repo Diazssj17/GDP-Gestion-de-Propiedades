@@ -232,6 +232,7 @@ def crear_tablas():
             concepto TEXT NOT NULL DEFAULT 'canon' CHECK(concepto IN ('canon','deposito','administracion','servicios','multa','otro')),
             periodo TEXT DEFAULT '' ,
             monto REAL NOT NULL,
+            pagado REAL NOT NULL DEFAULT 0,
             fecha_vencimiento TEXT NOT NULL,
             fecha_pago TEXT,
             metodo TEXT DEFAULT '' CHECK(metodo IN ('','efectivo','transferencia','consignacion','pse','otro')),
@@ -243,6 +244,21 @@ def crear_tablas():
     """)
     if not _tiene_columna(conexion, "pagos", "periodo"):
         conexion.execute("ALTER TABLE pagos ADD COLUMN periodo TEXT DEFAULT ''")
+    if not _tiene_columna(conexion, "pagos", "pagado"):
+        conexion.execute("ALTER TABLE pagos ADD COLUMN pagado REAL NOT NULL DEFAULT 0")
+
+    # --- 9b) Abonos (pagos parciales acumulables) ---
+    conexion.execute("""
+        CREATE TABLE IF NOT EXISTS abonos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pago_id INTEGER NOT NULL REFERENCES pagos(id) ON DELETE CASCADE,
+            monto REAL NOT NULL,
+            metodo TEXT DEFAULT '' CHECK(metodo IN ('','efectivo','transferencia','consignacion','pse','otro')),
+            comprobante TEXT DEFAULT '',
+            notas TEXT DEFAULT '',
+            fecha TEXT NOT NULL DEFAULT (date('now'))
+        )
+    """)
 
     # --- 10) Servicios (catalogo) ---
     conexion.execute("""
@@ -464,6 +480,7 @@ def crear_tablas():
         "CREATE INDEX IF NOT EXISTS idx_pagos_contrato ON pagos(contrato_id)",
         "CREATE INDEX IF NOT EXISTS idx_pagos_estado_vencimiento ON pagos(estado, fecha_vencimiento)",
         "CREATE INDEX IF NOT EXISTS idx_pagos_periodo ON pagos(periodo)",
+        "CREATE INDEX IF NOT EXISTS idx_abonos_pago ON abonos(pago_id)",
         "CREATE INDEX IF NOT EXISTS idx_alertas_usuario_leida ON alertas(usuario_destino_id, leida)",
         "CREATE INDEX IF NOT EXISTS idx_notificaciones_usuario_leida ON notificaciones(usuario_destino_id, leida)",
         "CREATE INDEX IF NOT EXISTS idx_mantenimiento_unidad_estado ON mantenimiento(unidad_id, estado)",

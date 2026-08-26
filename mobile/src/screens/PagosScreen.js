@@ -13,11 +13,10 @@ export default function PagosScreen({ navigation }) {
   const [filtro, setFiltro] = useState('');
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
-  // modal registrar pago
-  const [registrar, setRegistrar] = useState(null); // pago seleccionado
+  // modal abono
+  const [registrar, setRegistrar] = useState(null);
   const [metodo, setMetodo] = useState('efectivo');
-  const [fechaPago, setFechaPago] = useState(new Date().toISOString().slice(0, 10));
-  const [montoPagado, setMontoPagado] = useState('');
+  const [montoAbono, setMontoAbono] = useState('');
   const [guardando, setGuardando] = useState(false);
 
   const load = useCallback(async (estado = '') => {
@@ -27,16 +26,16 @@ export default function PagosScreen({ navigation }) {
   }, []);
   useEffect(() => { load(''); }, [load]);
 
-  const abrirRegistrar = (p) => { setRegistrar(p); setMetodo('efectivo'); setMontoPagado(String(p.monto)); };
-  const confirmarPago = async () => {
+  const restanteDe = (p) => Math.max(0, Number(p.monto) - Number(p.pagado || 0));
+  const abrirRegistrar = (p) => { setRegistrar(p); setMetodo('efectivo'); setMontoAbono(String(restanteDe(p))); };
+
+  const abonar = async (monto) => {
     setGuardando(true);
     try {
-      await api.registrarPago(registrar.id, { fecha_pago: fechaPago, metodo, monto_pagado: Number(montoPagado) || undefined });
+      await api.registrarPago(registrar.id, { metodo, monto_abono: monto });
       setRegistrar(null);
       load(filtro);
-    } catch (e) {
-      console.log(e.message);
-    } finally { setGuardando(false); }
+    } catch (e) { console.log(e.message); } finally { setGuardando(false); }
   };
 
   const fmt = n => `$${Number(n).toLocaleString('es-CO')}`;
@@ -44,9 +43,9 @@ export default function PagosScreen({ navigation }) {
   return (
     <View style={[s.container, { backgroundColor: c.background }]}>
       <Text style={[s.header, { color: c.text }]}>Pagos</Text>
-      <Text style={[s.sub, { color: c.textSecondary }]}>Pagos pertenecen a contrato · toca uno para registrarlo</Text>
+      <Text style={[s.sub, { color: c.textSecondary }]}>Toca un pago para abonar (total o parcial)</Text>
       <View style={s.filters}>
-        {['', 'pendiente', 'mora', 'pagado'].map(e => (
+        {['', 'pendiente', 'mora', 'parcial', 'pagado'].map(e => (
           <TouchableOpacity key={e || 'todos'} onPress={() => { setFiltro(e); load(e); }} style={[s.chip, { backgroundColor: c.card, borderColor: c.border }, filtro === e && { backgroundColor: c.chipActive, borderColor: c.chipActive }]}>
             <Text style={[s.chipText, { color: filtro === e ? c.chipTextActive : c.textSecondary }]}>{e || 'todos'}</Text>
           </TouchableOpacity>
@@ -59,19 +58,25 @@ export default function PagosScreen({ navigation }) {
           refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load(filtro)} tintColor={c.accent} />}
           contentContainerStyle={{ paddingBottom: 90 }}
           ListEmptyComponent={<Text style={[s.empty, { color: c.textMuted }]}>Sin pagos en este filtro.</Text>}
-          renderItem={({ item }) => (
-            <TouchableOpacity style={[s.card, { backgroundColor: c.card }]} onPress={() => (item.estado === 'pendiente' || item.estado === 'mora') && abrirRegistrar(item)}>
-              <View style={s.row}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[s.title, { color: c.text }]}>{fmt(item.monto)} · {item.periodo || item.concepto}</Text>
-                  <Text style={[s.meta, { color: c.textSecondary }]}>{item.unidad_codigo} · {item.inquilino_nombre}</Text>
+          renderItem={({ item }) => {
+            const esAbonable = item.estado === 'pendiente' || item.estado === 'mora' || item.estado === 'parcial';
+            return (
+              <TouchableOpacity style={[s.card, { backgroundColor: c.card }]} onPress={() => esAbonable && abrirRegistrar(item)} activeOpacity={0.8}>
+                <View style={s.row}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.title, { color: c.text }]}>{fmt(item.monto)} · {item.periodo || item.concepto}</Text>
+                    <Text style={[s.meta, { color: c.textSecondary }]}>{item.unidad_codigo} · {item.inquilino_nombre}</Text>
+                  </View>
+                  <View style={[s.badge, { backgroundColor: colors[item.estado] || '#64748B' }]}><Text style={s.badgeText}>{item.estado}</Text></View>
                 </View>
-                <View style={[s.badge, { backgroundColor: colors[item.estado] || '#64748B' }]}><Text style={s.badgeText}>{item.estado}</Text></View>
-              </View>
-              <Text style={[s.meta, { color: c.textSecondary }]}>Vence {item.fecha_vencimiento}{item.fecha_pago ? ` · Pagado ${item.fecha_pago}` : ''}</Text>
-              {(item.estado === 'pendiente' || item.estado === 'mora') && <Text style={[s.registrar, { color: c.accent }]}>Toca para registrar pago →</Text>}
-            </TouchableOpacity>
-          )}
+                {Number(item.pagado) > 0 ? (
+                  <Text style={[s.meta, { color: c.success }]}>Abonado {fmt(item.pagado)} de {fmt(item.monto)}</Text>
+                ) : null}
+                <Text style={[s.meta, { color: c.textSecondary }]}>Vence {item.fecha_vencimiento}{item.fecha_pago ? ` · Último abono ${item.fecha_pago}` : ''}</Text>
+                {esAbonable && <Text style={[s.registrar, { color: c.accent }]}>Abonar →</Text>}
+              </TouchableOpacity>
+            );
+          }}
         />
       )}
       <TouchableOpacity style={[s.fab, { backgroundColor: c.primary }]} onPress={() => navigation.navigate('NuevoPago')}>
@@ -81,12 +86,13 @@ export default function PagosScreen({ navigation }) {
       <Modal visible={!!registrar} transparent animationType="slide">
         <View style={s.overlay}>
           <View style={[s.modal, { backgroundColor: c.card }]}>
-            <Text style={[s.modalTitle, { color: c.text }]}>Registrar pago</Text>
-            <Text style={[s.meta, { color: c.textSecondary }]}>{fmt(registrar?.monto || 0)} · {registrar?.periodo} · vence {registrar?.fecha_vencimiento}</Text>
-            <Text style={[s.label, { color: c.textSecondary }]}>Fecha de pago</Text>
-            <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} value={fechaPago} onChangeText={setFechaPago} placeholder="2026-08-20" placeholderTextColor={c.placeholder} />
-            <Text style={[s.label, { color: c.textSecondary }]}>Monto pagado (vacío = total)</Text>
-            <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} value={montoPagado} onChangeText={setMontoPagado} keyboardType="numeric" placeholderTextColor={c.placeholder} />
+            <Text style={[s.modalTitle, { color: c.text }]}>Registrar abono</Text>
+            <Text style={[s.meta, { color: c.textSecondary }]}>{registrar?.periodo || registrar?.concepto} · vence {registrar?.fecha_vencimiento}</Text>
+            <View style={[s.resumen, { backgroundColor: theme.dark ? '#12243B' : '#EFF6FF' }]}>
+              <Text style={[s.meta, { color: c.textSecondary }]}>Total: {fmt(registrar?.monto || 0)}</Text>
+              <Text style={[s.meta, { color: c.textSecondary }]}>Abonado: {fmt(registrar?.pagado || 0)}</Text>
+              <Text style={[s.restante, { color: c.danger }]}>Restante: {fmt(restanteDe(registrar || {}))}</Text>
+            </View>
             <Text style={[s.label, { color: c.textSecondary }]}>Método</Text>
             <View style={s.methods}>
               {METODOS.map(m => (
@@ -95,10 +101,15 @@ export default function PagosScreen({ navigation }) {
                 </TouchableOpacity>
               ))}
             </View>
+            <Text style={[s.label, { color: c.textSecondary }]}>Monto a abonar</Text>
+            <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} value={montoAbono} onChangeText={setMontoAbono} keyboardType="numeric" placeholder="0" placeholderTextColor={c.placeholder} />
             <View style={s.modalBtns}>
               <TouchableOpacity style={[s.btn, s.cancel, { borderColor: c.border }]} onPress={() => setRegistrar(null)}><Text style={{ color: c.textSecondary }}>Cancelar</Text></TouchableOpacity>
-              <TouchableOpacity style={[s.btn, { backgroundColor: c.primary }]} onPress={confirmarPago} disabled={guardando}>
-                {guardando ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Confirmar</Text>}
+              <TouchableOpacity style={[s.btn, s.parcialBtn, { borderColor: c.warning }]} onPress={() => abonar(Number(montoAbono) || 0)} disabled={guardando}>
+                <Text style={{ color: c.warning, fontWeight: '700' }}>Abonar parcial</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.btn, { backgroundColor: c.primary }]} onPress={() => abonar(restanteDe(registrar))} disabled={guardando}>
+                {guardando ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Abonar total</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -126,11 +137,14 @@ const s = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modal: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 30 },
   modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 4 },
+  resumen: { borderRadius: 10, padding: 12, marginTop: 12 },
+  restante: { fontSize: 14, fontWeight: '800', marginTop: 4 },
   label: { fontSize: 12, fontWeight: '600', marginTop: 12, marginBottom: 4 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
   methods: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  modalBtns: { flexDirection: 'row', gap: 10, marginTop: 20 },
+  modalBtns: { flexDirection: 'row', gap: 8, marginTop: 20 },
   btn: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center', borderWidth: 1 },
   cancel: { borderWidth: 1 },
+  parcialBtn: { borderWidth: 1 },
   btnText: { color: '#fff', fontWeight: '700' },
 });
