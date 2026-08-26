@@ -20,6 +20,9 @@ client.interceptors.request.use(async (config) => {
 
 export const api = {
   health: () => client.get('/api/health').then(r => r.data),
+  me: () => client.get('/api/me').then(r => r.data),
+  login: (email, password) => client.post('/api/login', { email, password }).then(r => r.data),
+  logout: () => client.post('/api/logout').then(r => r.data),
   resumen: () => client.get('/api/reportes/resumen').then(r => r.data),
   propiedades: (params = {}) => client.get('/api/propiedades', { params }).then(r => r.data),
   unidades: (params = {}) => client.get('/api/unidades', { params }).then(r => r.data),
