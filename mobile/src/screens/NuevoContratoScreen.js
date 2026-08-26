@@ -29,6 +29,8 @@ export default function NuevoContratoScreen({ navigation }) {
   const [nuevoNombre, setNuevoNombre] = useState('');
   const [nuevoDoc, setNuevoDoc] = useState('');
   const [nuevoTel, setNuevoTel] = useState('');
+  const [nuevoEmail, setNuevoEmail] = useState('');
+  const [nuevoPass, setNuevoPass] = useState('');
   const [crearInquilinoNuevo, setCrearInquilinoNuevo] = useState(false);
 
   const [fechaInicio, setFechaInicio] = useState(new Date().toISOString().slice(0, 10));
@@ -76,7 +78,7 @@ export default function NuevoContratoScreen({ navigation }) {
     try {
       let inqId = inquilinoId;
       if (crearInquilinoNuevo) {
-        const nuevo = await api.crearInquilino({ nombre: nuevoNombre, documento: nuevoDoc, telefono: nuevoTel });
+        const nuevo = await api.crearInquilino({ nombre: nuevoNombre, documento: nuevoDoc, telefono: nuevoTel, email: nuevoEmail, password: nuevoPass });
         inqId = nuevo.id;
       }
       // El primer documento de tipo 'contrato' se guarda como documento principal; los demas como documentos extra
@@ -112,6 +114,10 @@ export default function NuevoContratoScreen({ navigation }) {
             <TextInput style={[s.input, s.half, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} placeholder="Documento" placeholderTextColor={c.placeholder} value={nuevoDoc} onChangeText={setNuevoDoc} />
             <TextInput style={[s.input, s.half, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} placeholder="Teléfono" placeholderTextColor={c.placeholder} value={nuevoTel} onChangeText={setNuevoTel} keyboardType="phone-pad" />
           </View>
+          <Text style={[s.label, { color: c.textSecondary }]}>Cuenta de acceso (opcional)</Text>
+          <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} placeholder="Email (para que el inquilino entre)" placeholderTextColor={c.placeholder} value={nuevoEmail} onChangeText={setNuevoEmail} autoCapitalize="none" keyboardType="email-address" />
+          <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} placeholder="Contraseña" placeholderTextColor={c.placeholder} value={nuevoPass} onChangeText={setNuevoPass} secureTextEntry />
+          <Text style={[s.hint, { color: c.textMuted }]}>Si llenas email y contraseña, se crea un usuario que podrá entrar como inquilino.</Text>
         </View>
       ) : (
         <Picker label="Inquilino" value={inquilinoId} options={inquilinos} onSelect={setInquilinoId} placeholder="Seleccionar inquilino..." />
@@ -156,6 +162,8 @@ const s = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '900' },
   sub: { fontSize: 12, marginBottom: 16 },
   section: { fontWeight: '800', marginTop: 8, marginBottom: 8 },
+  label: { fontSize: 12, fontWeight: '600', marginTop: 4, marginBottom: 4 },
+  hint: { fontSize: 11, marginTop: 6 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 12 },
   row: { flexDirection: 'row', gap: 10 },
   half: { flex: 1 },

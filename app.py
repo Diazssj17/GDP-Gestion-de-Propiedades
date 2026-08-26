@@ -17,7 +17,7 @@ import base64
 from datetime import datetime, timedelta
 
 from flask import Flask, jsonify, request, g
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from database import get_db, crear_tablas, UPLOAD_FOLDER
 import sqlite3
@@ -593,13 +593,30 @@ def crear_inquilino():
     nombre = (data.get("nombre") or "").strip()
     if not nombre:
         return jsonify({"error": "nombre requerido"}), 400
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    # Crear cuenta de usuario (rol inquilino) si se pide email + password
+    usuario_id = None
+    creado_usuario = False
+    if email and password:
+        existente = query_one("SELECT id FROM usuarios WHERE lower(email)=?", (email,))
+        if existente:
+            return jsonify({"error": "Ya existe un usuario con ese email"}), 400
+        cur_user = g.db.execute(
+            "INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES (?,?,?,?)",
+            (nombre, email, generate_password_hash(password), "inquilino"),
+        )
+        usuario_id = cur_user.lastrowid
+        creado_usuario = True
+
     cur = g.db.execute("""
-        INSERT INTO inquilinos (nombre, documento, email, telefono, direccion, referencia)
-        VALUES (?,?,?,?,?,?)
-    """, (nombre, data.get("documento", ""), data.get("email", ""), data.get("telefono", ""),
-          data.get("direccion", ""), data.get("referencia", "")))
+        INSERT INTO inquilinos (nombre, documento, email, telefono, direccion, referencia, usuario_id)
+        VALUES (?,?,?,?,?,?,?)
+    """, (nombre, data.get("documento", ""), email, data.get("telefono", ""),
+          data.get("direccion", ""), data.get("referencia", ""), usuario_id))
     g.db.commit()
-    return jsonify({"ok": True, "id": cur.lastrowid}), 201
+    return jsonify({"ok": True, "id": cur.lastrowid, "usuario_id": usuario_id, "creado_usuario": creado_usuario}), 201
 
 
 # --- Pagos (crear + registrar con mora) ---
