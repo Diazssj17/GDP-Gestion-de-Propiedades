@@ -46,6 +46,7 @@ export const api = {
   actualizarMantenimiento: (id, data) => client.patch(`/api/mantenimientos/${id}`, data).then(r => r.data),
   recibos: (params = {}) => client.get('/api/recibos', { params }).then(r => r.data),
   crearRecibo: (data) => client.post('/api/recibos', data).then(r => r.data),
+  actualizarRecibo: (id, data) => client.patch(`/api/recibos/${id}`, data).then(r => r.data),
 };
 
 export default client;

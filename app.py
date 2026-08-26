@@ -810,6 +810,10 @@ def list_recibos():
         return jsonify({"error": "No autenticado"}), 401
     propiedad_id = request.args.get("propiedad_id")
     periodo = request.args.get("periodo")
+    estado = request.args.get("estado")
+    # Auto-marca como vencido (mora) los recibos pendientes vencidos
+    g.db.execute("UPDATE recibos SET estado='vencido' WHERE estado='pendiente' AND fecha_vencimiento IS NOT NULL AND fecha_vencimiento != '' AND fecha_vencimiento < date('now')")
+    g.db.commit()
     sql = """
         SELECT r.*, s.nombre as servicio_nombre, p.nombre as propiedad_nombre
         FROM recibos r
@@ -836,6 +840,9 @@ def list_recibos():
     if periodo:
         where.append("r.periodo=?")
         params.append(periodo)
+    if estado:
+        where.append("r.estado=?")
+        params.append(estado)
     if where:
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY r.fecha_creacion DESC LIMIT 100"
@@ -851,6 +858,25 @@ def list_recibos():
         d["distribucion"] = [row_to_dict(x) for x in dist]
         result.append(d)
     return jsonify(result)
+
+
+@app.route("/api/recibos/<int:recibo_id>", methods=["PATCH"])
+def actualizar_recibo(recibo_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
+    recibo = query_one("SELECT * FROM recibos WHERE id=?", (recibo_id,))
+    if not recibo:
+        return jsonify({"error": "Recibo no existe"}), 404
+    data = request.get_json(silent=True) or {}
+    estado = data.get("estado")
+    if estado not in ("pendiente", "pagado", "vencido", "parcial"):
+        return jsonify({"error": "estado invalido (pendiente/pagado/vencido/parcial)"}), 400
+    g.db.execute("UPDATE recibos SET estado=? WHERE id=?", (estado, recibo_id))
+    g.db.commit()
+    return jsonify({"ok": True, "estado": estado})
 
 
 def _calcular_distribucion(valor, metodo, distribucion, unidades_ids):
