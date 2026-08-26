@@ -20,11 +20,11 @@ export default function PagosScreen({ navigation }) {
   const [montoPagado, setMontoPagado] = useState('');
   const [guardando, setGuardando] = useState(false);
 
-  const load = useCallback(async (estado = filtro) => {
+  const load = useCallback(async (estado = '') => {
     setLoading(true);
     try { setData(await api.pagos(estado)); } catch { setData([]); }
     setLoading(false);
-  }, [filtro]);
+  }, []);
   useEffect(() => { load(''); }, [load]);
 
   const abrirRegistrar = (p) => { setRegistrar(p); setMetodo('efectivo'); setMontoPagado(String(p.monto)); };

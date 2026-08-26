@@ -15,11 +15,11 @@ export default function MantenimientoScreen({ navigation }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async (estado = filtro) => {
+  const load = useCallback(async (estado = '') => {
     setLoading(true);
     try { setData(await api.mantenimientos(estado ? { estado } : {})); } catch { setData([]); }
     setLoading(false);
-  }, [filtro]);
+  }, []);
   useEffect(() => { load(''); }, [load]);
 
   const resolver = async (t) => {
