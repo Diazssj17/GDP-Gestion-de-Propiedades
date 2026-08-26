@@ -443,6 +443,59 @@ def crear_contrato():
     return jsonify({"ok": True}), 201
 
 
+def _sumar_meses(fecha, meses):
+    if not fecha:
+        return fecha
+    try:
+        d = datetime.strptime(fecha, "%Y-%m-%d")
+    except ValueError:
+        return fecha
+    mes_total = d.month - 1 + meses
+    anio = d.year + mes_total // 12
+    mes = mes_total % 12 + 1
+    dia = min(d.day, [31, 29 if anio % 4 == 0 and (anio % 100 != 0 or anio % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mes - 1])
+    return f"{anio:04d}-{mes:02d}-{dia:02d}"
+
+
+@app.route("/api/contratos/<int:contrato_id>", methods=["PATCH"])
+def actualizar_contrato(contrato_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
+    c = query_one("SELECT * FROM contratos WHERE id=?", (contrato_id,))
+    if not c:
+        return jsonify({"error": "Contrato no existe"}), 404
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        unidad = query_one("SELECT * FROM unidades WHERE id=?", (c["unidad_id"],))
+        if pid is None or query_one("SELECT id FROM propiedades WHERE id=? AND propietario_id=?", (unidad["propiedad_id"], pid)) is None:
+            return jsonify({"error": "No autorizado sobre ese contrato"}), 403
+    data = request.get_json(silent=True) or {}
+    accion = data.get("accion")
+
+    if accion == "renovar":
+        nueva_fecha_fin = data.get("nueva_fecha_fin")
+        if not nueva_fecha_fin and data.get("meses"):
+            nueva_fecha_fin = _sumar_meses(c["fecha_fin"] or c["fecha_inicio"], int(data["meses"]))
+        if not nueva_fecha_fin:
+            return jsonify({"error": "nueva_fecha_fin o meses requerido"}), 400
+        g.db.execute("UPDATE contratos SET fecha_fin=?, estado='activo' WHERE id=?", (nueva_fecha_fin, contrato_id))
+        g.db.execute("UPDATE unidades SET estado='ocupada' WHERE id=?", (c["unidad_id"],))
+        g.db.commit()
+        return jsonify({"ok": True, "estado": "activo", "fecha_fin": nueva_fecha_fin})
+
+    if accion in ("terminar", "cancelar"):
+        estado = "terminado" if accion == "terminar" else "cancelado"
+        g.db.execute("UPDATE contratos SET estado=? WHERE id=?", (estado, contrato_id))
+        g.db.execute("UPDATE unidades SET estado='disponible' WHERE id=?", (c["unidad_id"],))
+        g.db.commit()
+        return jsonify({"ok": True, "estado": estado})
+
+    return jsonify({"error": "accion invalida (renovar/terminar/cancelar)"}), 400
+
+
 # --- Inquilinos ---
 @app.route("/api/inquilinos")
 def list_inquilinos():

@@ -29,6 +29,7 @@ export const api = {
   unidades: (params = {}) => client.get('/api/unidades', { params }).then(r => r.data),
   contratos: () => client.get('/api/contratos').then(r => r.data),
   crearContrato: (data) => client.post('/api/contratos', data).then(r => r.data),
+  actualizarContrato: (id, data) => client.patch(`/api/contratos/${id}`, data).then(r => r.data),
   inquilinos: () => client.get('/api/inquilinos').then(r => r.data),
   crearInquilino: (data) => client.post('/api/inquilinos', data).then(r => r.data),
   pagos: (estado) => client.get('/api/pagos', { params: estado ? { estado } : {} }).then(r => r.data),
