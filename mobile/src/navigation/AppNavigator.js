@@ -101,7 +101,6 @@ function MasStack() {
       <Stack.Screen name="NuevoRecibo" component={NuevoReciboScreen} options={{ title: 'Nuevo recibo', ...cardHeader(theme) }} />
       <Stack.Screen name="Mantenimiento" component={MantenimientoScreen} options={{ title: 'Mantenimiento', ...cardHeader(theme) }} />
       <Stack.Screen name="NuevoMantenimiento" component={NuevoMantenimientoScreen} options={{ title: 'Nuevo ticket', ...cardHeader(theme) }} />
-      <Stack.Screen name="Inquilinos" component={InquilinosScreen} options={{ title: 'Inquilinos', ...cardHeader(theme) }} />
     </Stack.Navigator>
   );
 }
