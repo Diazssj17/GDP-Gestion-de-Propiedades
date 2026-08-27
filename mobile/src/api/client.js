@@ -25,6 +25,7 @@ export const api = {
   login: (email, password) => client.post('/api/login', { email, password }).then(r => r.data),
   logout: () => client.post('/api/logout').then(r => r.data),
   resumen: () => client.get('/api/reportes/resumen').then(r => r.data),
+  adminResumen: () => client.get('/api/admin/resumen').then(r => r.data),
   propiedades: (params = {}) => client.get('/api/propiedades', { params }).then(r => r.data),
   unidades: (params = {}) => client.get('/api/unidades', { params }).then(r => r.data),
   contratos: (params = {}) => client.get('/api/contratos', { params }).then(r => r.data),

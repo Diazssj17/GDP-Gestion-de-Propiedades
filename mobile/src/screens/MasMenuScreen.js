@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../auth/AuthContext';
 
-const MODULOS = [
+const OPERATIVOS = [
   { name: 'Contratos', icon: 'document-text', desc: 'Unidad ↔ Inquilino · renovar, terminar', color: '#2563EB' },
   { name: 'Pagos', icon: 'cash', desc: 'Cobros, abonos parciales y mora', color: '#059669' },
   { name: 'Servicios', icon: 'water', desc: 'Recibos de agua, luz, gas', color: '#0891B2' },
@@ -14,8 +14,11 @@ export default function MasMenuScreen({ navigation }) {
   const { theme } = useTheme();
   const { user } = useAuth();
   const c = theme.colors;
-  const esAdmin = user?.rol === 'superadmin';
-  const modulos = esAdmin ? [...MODULOS, { name: 'Propietarios', icon: 'people', desc: 'Cuentas y planes de propietarios', color: '#7C3AED' }, { name: 'Planes', icon: 'pricetags', desc: 'Precios y límites', color: '#0F766E' }] : MODULOS;
+  const rol = user?.rol;
+  // superadmin: operativos + inquilinos (los demas son pestanas)
+  const modulos = rol === 'superadmin'
+    ? [...OPERATIVOS, { name: 'Inquilinos', icon: 'people', desc: 'Ver todos los inquilinos', color: '#7C3AED' }]
+    : OPERATIVOS;
   return (
     <View style={[s.container, { backgroundColor: c.background }]}>
       <Text style={[s.header, { color: c.text }]}>Más módulos</Text>

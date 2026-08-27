@@ -199,6 +199,40 @@ def detectar_mora():
     g.db.commit()
 
 # --- Planes (solo superadmin) ---
+@app.route("/api/admin/resumen")
+def admin_resumen():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] != "superadmin":
+        return jsonify({"error": "No autorizado (solo superadmin)"}), 403
+    detectar_mora()
+    def c(sql, params=()):
+        return query_one(sql, params)["c"]
+    stats = {
+        "propietarios": c("SELECT COUNT(*) as c FROM propietarios"),
+        "propiedades": c("SELECT COUNT(*) as c FROM propiedades"),
+        "unidades": c("SELECT COUNT(*) as c FROM unidades"),
+        "unidades_ocupadas": c("SELECT COUNT(*) as c FROM unidades WHERE estado='ocupada'"),
+        "contratos_activos": c("SELECT COUNT(*) as c FROM contratos WHERE estado='activo'"),
+        "inquilinos": c("SELECT COUNT(*) as c FROM inquilinos"),
+        "pagos_mora": c("SELECT COUNT(*) as c FROM pagos WHERE estado='mora'"),
+        "pagos_pendientes": c("SELECT COUNT(*) as c FROM pagos WHERE estado='pendiente'"),
+        "ingresos_cobrados": query_one("SELECT COALESCE(SUM(pagado),0) as v FROM pagos")["v"],
+        "ingresos_por_cobrar": query_one("SELECT COALESCE(SUM(monto - pagado),0) as v FROM pagos WHERE estado!='pagado'")["v"],
+        "suscripciones_activas": c("SELECT COUNT(*) as c FROM suscripciones WHERE estado='activa'"),
+        "mantenimiento_pendiente": c("SELECT COUNT(*) as c FROM mantenimientos WHERE estado IN ('reportado','pendiente','en_revision','en_proceso')"),
+    }
+    planes = query_all("""
+        SELECT pl.nombre, COUNT(s.id) as suscriptores
+        FROM planes pl
+        LEFT JOIN suscripciones s ON s.plan_id = pl.id AND s.estado='activa'
+        GROUP BY pl.id ORDER BY pl.id
+    """)
+    stats["planes"] = [row_to_dict(r) for r in planes]
+    return jsonify(stats)
+
+
 @app.route("/api/planes")
 def list_planes():
     user = require_auth()

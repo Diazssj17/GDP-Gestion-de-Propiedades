@@ -8,6 +8,7 @@ import HeaderRight from '../components/HeaderRight';
 import ScrollableTabBar from '../components/ScrollableTabBar';
 
 import DashboardScreen from '../screens/DashboardScreen';
+import AdminDashboardScreen from '../screens/AdminDashboardScreen';
 import PropiedadesScreen from '../screens/PropiedadesScreen';
 import UnidadesScreen from '../screens/UnidadesScreen';
 import InquilinosScreen from '../screens/InquilinosScreen';
@@ -89,8 +90,7 @@ function MasStack() {
       <Stack.Screen name="NuevoRecibo" component={NuevoReciboScreen} options={{ title: 'Nuevo recibo', ...cardHeader(theme) }} />
       <Stack.Screen name="Mantenimiento" component={MantenimientoScreen} options={{ title: 'Mantenimiento', ...cardHeader(theme) }} />
       <Stack.Screen name="NuevoMantenimiento" component={NuevoMantenimientoScreen} options={{ title: 'Nuevo ticket', ...cardHeader(theme) }} />
-      <Stack.Screen name="Propietarios" component={PropietariosScreen} options={{ title: 'Propietarios', ...cardHeader(theme) }} />
-      <Stack.Screen name="Planes" component={PlanesScreen} options={{ title: 'Planes', ...cardHeader(theme) }} />
+      <Stack.Screen name="Inquilinos" component={InquilinosScreen} options={{ title: 'Inquilinos', ...cardHeader(theme) }} />
     </Stack.Navigator>
   );
 }
@@ -98,7 +98,7 @@ function MasStack() {
 export default function AppNavigator() {
   const { theme } = useTheme();
   const { user } = useAuth();
-  const esInquilino = user?.rol === 'inquilino';
+  const rol = user?.rol;
   const navTheme = { ...(theme.dark ? DarkTheme : DefaultTheme), colors: { ...(theme.dark ? DarkTheme : DefaultTheme).colors, primary: theme.colors.accent, background: theme.colors.background, card: theme.colors.card, text: theme.colors.text, border: theme.colors.border } };
 
   const screenOptions = ({ route }) => ({
@@ -111,23 +111,43 @@ export default function AppNavigator() {
     headerTitleStyle: { fontWeight: '700' },
   });
 
-  return (
-    <NavigationContainer theme={navTheme}>
-      {esInquilino ? (
+  // Superadmin: enfocado en administracion
+  if (rol === 'superadmin') {
+    return (
+      <NavigationContainer theme={navTheme}>
+        <Tab.Navigator screenOptions={screenOptions}>
+          <Tab.Screen name="Panel" component={AdminDashboardScreen} options={{ headerTitle: '' }} />
+          <Tab.Screen name="Propietarios" component={PropietariosScreen} options={{ headerTitle: '' }} />
+          <Tab.Screen name="Planes" component={PlanesScreen} options={{ headerTitle: '' }} />
+          <Tab.Screen name="Más" component={MasStack} options={{ headerShown: false }} />
+        </Tab.Navigator>
+      </NavigationContainer>
+    );
+  }
+
+  // Inquilino: solo sus modulos
+  if (rol === 'inquilino') {
+    return (
+      <NavigationContainer theme={navTheme}>
         <Tab.Navigator screenOptions={screenOptions}>
           <Tab.Screen name="Contratos" component={ContratosStack} options={{ headerShown: false }} />
           <Tab.Screen name="Pagos" component={PagosStack} options={{ headerShown: false }} />
           <Tab.Screen name="Servicios" component={ServiciosStack} options={{ headerShown: false }} />
           <Tab.Screen name="Mantenimiento" component={MantenimientoStack} options={{ headerShown: false }} />
         </Tab.Navigator>
-      ) : (
-        <Tab.Navigator screenOptions={screenOptions}>
-          <Tab.Screen name="Inicio" component={DashboardScreen} options={{ headerTitle: '' }} />
-          <Tab.Screen name="Propiedades" component={PropiedadesStack} options={{ headerShown: false }} />
-          <Tab.Screen name="Inquilinos" component={InquilinosScreen} options={{ headerTitle: '' }} />
-          <Tab.Screen name="Más" component={MasStack} options={{ headerShown: false }} />
-        </Tab.Navigator>
-      )}
+      </NavigationContainer>
+    );
+  }
+
+  // Propietario
+  return (
+    <NavigationContainer theme={navTheme}>
+      <Tab.Navigator screenOptions={screenOptions}>
+        <Tab.Screen name="Inicio" component={DashboardScreen} options={{ headerTitle: '' }} />
+        <Tab.Screen name="Propiedades" component={PropiedadesStack} options={{ headerShown: false }} />
+        <Tab.Screen name="Inquilinos" component={InquilinosScreen} options={{ headerTitle: '' }} />
+        <Tab.Screen name="Más" component={MasStack} options={{ headerShown: false }} />
+      </Tab.Navigator>
     </NavigationContainer>
   );
 }
