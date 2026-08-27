@@ -471,6 +471,29 @@ def crear_tablas():
         )
     """)
 
+    # --- 20) Registro de intentos de login (anti fuerza bruta, ISO 27001 A.9) ---
+    conexion.execute("""
+        CREATE TABLE IF NOT EXISTS login_intentos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            ip TEXT DEFAULT '',
+            intentos INTEGER NOT NULL DEFAULT 0,
+            bloqueado_hasta TEXT,
+            ultimo TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(email, ip)
+        )
+    """)
+
+    # --- 21) Politicas de seguridad (configuracion) ---
+    conexion.execute("""
+        CREATE TABLE IF NOT EXISTS politicas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clave TEXT NOT NULL UNIQUE,
+            valor TEXT NOT NULL,
+            descripcion TEXT DEFAULT ''
+        )
+    """)
+
     # Indices escalabilidad
     indices = [
         "CREATE INDEX IF NOT EXISTS idx_propiedades_propietario ON propiedades(propietario_id)",
@@ -499,6 +522,7 @@ def crear_tablas():
         "CREATE INDEX IF NOT EXISTS idx_descuentos_codigo ON descuentos(codigo)",
         "CREATE INDEX IF NOT EXISTS idx_tokens_token ON tokens(token)",
         "CREATE INDEX IF NOT EXISTS idx_tokens_usuario ON tokens(usuario_id)",
+        "CREATE INDEX IF NOT EXISTS idx_logs_usuario ON logs(usuario_id)",
     ]
     for sql in indices:
         conexion.execute(sql)
@@ -588,6 +612,20 @@ def sembrar_datos_iniciales(conexion):
             conexion.execute("INSERT INTO configuracion (clave, valor, descripcion) VALUES (?,?,?)", (clave, valor, desc))
         print("[OK] Configuracion base creada")
 
+    # Politicas de seguridad (ISO 27001 A.9/A.10)
+    poli_count = conexion.execute("SELECT COUNT(*) as c FROM politicas").fetchone()["c"]
+    if poli_count == 0:
+        poemas = [
+            ("password_min_len", "8", "Longitud minima de contrasena"),
+            ("login_max_intentos", "5", "Intentos fallidos antes de bloquear"),
+            ("login_bloqueo_min", "15", "Minutos de bloqueo tras fallos"),
+            ("token_ttl_dias", "30", "Vigencia del token de sesion"),
+            ("expiracion_sesion", "1", "1 = sesion expira, 0 = no"),
+        ]
+        for k, v, d in poemas:
+            conexion.execute("INSERT INTO politicas (clave, valor, descripcion) VALUES (?,?,?)", (k, v, d))
+        print("[OK] Politicas de seguridad creadas")
+
     # Demo: 1 propietario con 2 casas
     demo_user = conexion.execute("SELECT id FROM usuarios WHERE email=?", ("demo@propietario.com",)).fetchone()
     if not demo_user:
@@ -634,7 +672,7 @@ if __name__ == "__main__":
     crear_tablas()
     print(f"Base de datos GDP lista en: {DB_PATH}")
     con = get_db()
-    for tabla in ["roles","usuarios","planes","suscripciones","descuentos","propietarios","propiedades","unidades","inquilinos","contratos","pagos","servicios","recibos","distribucion_servicios","alertas","notificaciones","mantenimiento","mantenimientos","documentos","reportes_generados","logs","configuracion","tokens"]:
+    for tabla in ["roles","usuarios","planes","suscripciones","descuentos","propietarios","propiedades","unidades","inquilinos","contratos","pagos","servicios","recibos","distribucion_servicios","alertas","notificaciones","mantenimiento","mantenimientos","documentos","reportes_generados","logs","configuracion","tokens","login_intentos","politicas"]:
         try:
             count = con.execute(f"SELECT COUNT(*) as c FROM {tabla}").fetchone()["c"]
             print(f"  {tabla}: {count}")

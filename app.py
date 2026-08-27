@@ -14,6 +14,7 @@ import secrets
 import os
 import time
 import base64
+import re
 from datetime import datetime, timedelta
 
 from flask import Flask, jsonify, request, g
@@ -40,6 +41,107 @@ def teardown_request(exception):
     db = getattr(g, 'db', None)
     if db is not None:
         db.close()
+
+# --- Seguridad (ISO 27001) ---
+
+SECURITY_HEADERS = {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    'X-XSS-Protection': '1; mode=block',
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+}
+
+@app.after_request
+def add_security_headers(resp):
+    for k, v in SECURITY_HEADERS.items():
+        resp.headers[k] = v
+    # Auditoria (ISO 27001 A.12.4): registrar peticiones de escritura en /api/
+    try:
+        if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.path.startswith("/api/"):
+            user = current_user()
+            _log_evento(
+                "http_" + request.method.lower(),
+                detalles=f"{request.method} {request.path} -> {resp.status_code}",
+                usuario_id=user["id"] if user else None,
+            )
+        elif request.path.startswith("/api/") and resp.status_code >= 400:
+            # Registrar errores de acceso (401/403) para monitoreo (A.12.4)
+            user = current_user()
+            _log_evento(
+                "acceso_denegado",
+                detalles=f"{request.method} {request.path} -> {resp.status_code}",
+                usuario_id=user["id"] if user else None,
+            )
+    except Exception:
+        pass
+    return resp
+
+def _log_evento(accion, entidad_tipo="", entidad_id=0, detalles="", usuario_id=None):
+    """Log de auditoria (ISO 27001 A.12). Persiste en la tabla logs."""
+    if usuario_id is None:
+        user = current_user()
+        usuario_id = user["id"] if user else None
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")[:60]
+    try:
+        g.db.execute(
+            "INSERT INTO logs (usuario_id, accion, entidad_tipo, entidad_id, detalles, ip) VALUES (?,?,?,?,?,?)",
+            (usuario_id, accion, entidad_tipo, entidad_id, detalles[:2000], ip),
+        )
+        g.db.commit()
+    except Exception:
+        pass
+
+def _validar_password(password):
+    """Politica de contrasenas (ISO 27001 A.9.4.3). Min 8, letra + numero."""
+    if not password or len(password) < 8:
+        return "La contrasena debe tener al menos 8 caracteres"
+    if not re.search(r"[A-Za-z]", password) or not re.search(r"[0-9]", password):
+        return "La contrasena debe incluir letras y numeros"
+    return None
+
+def _hash_password(password):
+    # scrypt (mas resistente a fuerza bruta que pbkdf2 por defecto)
+    return generate_password_hash(password, method="scrypt")
+
+def _ip():
+    return request.headers.get("X-Forwarded-For", request.remote_addr or "")[:60]
+
+def _politica(clave, default="0"):
+    f = query_one("SELECT valor FROM politicas WHERE clave=?", (clave,))
+    return f["valor"] if f else default
+
+def _check_bloqueo(email):
+    max_i = int(_politica("login_max_intentos", "5"))
+    min_bloq = int(_politica("login_bloqueo_min", "15"))
+    reg = query_one("SELECT intentos, bloqueado_hasta FROM login_intentos WHERE email=? AND ip=?", (email, _ip()))
+    if reg and reg["intentos"] >= max_i and reg["bloqueado_hasta"]:
+        try:
+            if datetime.fromisoformat(reg["bloqueado_hasta"]) > datetime.now():
+                return True, min_bloq
+        except ValueError:
+            pass
+    return False, min_bloq
+
+def _registrar_intento(email, exito):
+    ip = _ip()
+    if exito:
+        try:
+            g.db.execute("DELETE FROM login_intentos WHERE email=? AND ip=?", (email, ip))
+        except Exception:
+            pass
+        return
+    max_i = int(_politica("login_max_intentos", "5"))
+    min_bloq = int(_politica("login_bloqueo_min", "15"))
+    reg = query_one("SELECT id, intentos FROM login_intentos WHERE email=? AND ip=?", (email, ip))
+    if reg:
+        nuevo = reg["intentos"] + 1
+        bloqueo = (datetime.now() + timedelta(minutes=min_bloq)).isoformat() if nuevo >= max_i else None
+        g.db.execute("UPDATE login_intentos SET intentos=?, bloqueado_hasta=?, ultimo=? WHERE id=?", (nuevo, bloqueo, datetime.now().isoformat(), reg["id"]))
+    else:
+        bloqueo = (datetime.now() + timedelta(minutes=min_bloq)).isoformat() if 1 >= max_i else None
+        g.db.execute("INSERT INTO login_intentos (email, ip, intentos, bloqueado_hasta, ultimo) VALUES (?,?,?,?,?)", (email, ip, 1, bloqueo, datetime.now().isoformat()))
+    g.db.commit()
 
 # --- Helpers ---
 def query_one(sql, params=()):
@@ -97,20 +199,33 @@ def login():
     if not email or not password:
         return jsonify({"error": "Email y contrasena requeridos"}), 400
 
+    # Anti fuerza bruta (ISO 27001 A.9.4.2)
+    bloqueado, mins = _check_bloqueo(email)
+    if bloqueado:
+        _log_evento("login_bloqueado", detalles=f"email={email}")
+        return jsonify({"error": f"Cuenta bloqueada temporalmente. Intenta en {mins} min"}), 429
+
     user = query_one("SELECT * FROM usuarios WHERE lower(email) = ?", (email,))
     if not user or not check_password_hash(user["password_hash"], password):
+        _registrar_intento(email, False)
+        _log_evento("login_fallido", detalles=f"email={email}", usuario_id=user["id"] if user else None)
         return jsonify({"error": "Credenciales invalidas"}), 401
     if not user["activo"]:
+        _log_evento("login_usuario_inactivo", detalles=f"email={email}", usuario_id=user["id"])
         return jsonify({"error": "Usuario inactivo"}), 403
 
+    _registrar_intento(email, True)
     token = secrets.token_hex(32)
-    expiracion = (datetime.now() + timedelta(days=TOKEN_TTL_DAYS)).isoformat() if TOKEN_TTL_DAYS else None
+    # Vigencia del token desde politicas
+    ttl = int(_politica("token_ttl_dias", str(TOKEN_TTL_DAYS)))
+    expiracion = (datetime.now() + timedelta(days=ttl)).isoformat() if ttl else None
     g.db.execute(
         "INSERT INTO tokens (usuario_id, token, dispositivo, fecha_expiracion) VALUES (?,?,?,?)",
         (user["id"], token, data.get("dispositivo", ""), expiracion),
     )
     g.db.commit()
-    return jsonify({"token": token, "usuario": _public_user(dict(user))})
+    _log_evento("login_exitoso", detalles=f"email={email}", usuario_id=user["id"])
+    return jsonify({"token": token, "usuario": _public_user(dict(user)), "expira_en_dias": ttl})
 
 @app.route("/api/me")
 def me():
@@ -153,6 +268,7 @@ def logout():
     if token:
         g.db.execute("UPDATE tokens SET activo=0 WHERE token=?", (token,))
         g.db.commit()
+    _log_evento("logout")
     return jsonify({"ok": True})
 
 # --- Rutas basicas ---
@@ -323,11 +439,14 @@ def crear_propietario():
     password = data.get("password") or ""
     if not nombre or not email or not password:
         return jsonify({"error": "nombre, email y password requeridos"}), 400
+    err = _validar_password(password)
+    if err:
+        return jsonify({"error": err}), 400
     if query_one("SELECT id FROM usuarios WHERE lower(email)=?", (email,)):
         return jsonify({"error": "Ya existe un usuario con ese email"}), 400
     cur_user = g.db.execute(
         "INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES (?,?,?,?)",
-        (nombre, email, generate_password_hash(password), "propietario"),
+        (nombre, email, _hash_password(password), "propietario"),
     )
     uid = cur_user.lastrowid
     cur = g.db.execute("""
@@ -339,6 +458,7 @@ def crear_propietario():
         g.db.execute("INSERT INTO suscripciones (usuario_id, plan_id, estado) VALUES (?,?,?)",
                      (uid, data["plan_id"], "activa"))
     g.db.commit()
+    _log_evento("crear_propietario", entidad_tipo="propietario", entidad_id=cur.lastrowid, detalles=f"email={email}", usuario_id=user["id"])
     return jsonify({"ok": True, "id": cur.lastrowid, "usuario_id": uid}), 201
 
 
@@ -397,20 +517,24 @@ def gestionar_propietario(propietario_id):
         g.db.execute("UPDATE suscripciones SET estado='cancelada' WHERE usuario_id=? AND estado='activa'", (p["usuario_id"],))
         g.db.execute("INSERT INTO suscripciones (usuario_id, plan_id, estado) VALUES (?,?,?)", (p["usuario_id"], plan_id, "activa"))
         g.db.commit()
+        _log_evento("asignar_plan", entidad_tipo="propietario", entidad_id=propietario_id, detalles=f"plan_id={plan_id}", usuario_id=user["id"])
         return jsonify({"ok": True})
 
     if accion in ("activar", "desactivar"):
         activo = 1 if accion == "activar" else 0
         g.db.execute("UPDATE usuarios SET activo=? WHERE id=?", (activo, p["usuario_id"]))
         g.db.commit()
+        _log_evento(accion, entidad_tipo="propietario", entidad_id=propietario_id, detalles=f"usuario_id={p['usuario_id']}", usuario_id=user["id"])
         return jsonify({"ok": True, "activo": activo})
 
     if accion == "reset_password":
         password = data.get("password") or ""
-        if not password:
-            return jsonify({"error": "password requerido"}), 400
-        g.db.execute("UPDATE usuarios SET password_hash=? WHERE id=?", (generate_password_hash(password), p["usuario_id"]))
+        err = _validar_password(password)
+        if err:
+            return jsonify({"error": err}), 400
+        g.db.execute("UPDATE usuarios SET password_hash=? WHERE id=?", (_hash_password(password), p["usuario_id"]))
         g.db.commit()
+        _log_evento("reset_password", entidad_tipo="propietario", entidad_id=propietario_id, usuario_id=user["id"])
         return jsonify({"ok": True})
 
     return jsonify({"error": "accion invalida (asignar_plan/activar/desactivar/reset_password)"}), 400
@@ -1040,12 +1164,15 @@ def crear_inquilino():
     usuario_id = None
     creado_usuario = False
     if email and password:
+        err = _validar_password(password)
+        if err:
+            return jsonify({"error": err}), 400
         existente = query_one("SELECT id FROM usuarios WHERE lower(email)=?", (email,))
         if existente:
             return jsonify({"error": "Ya existe un usuario con ese email"}), 400
         cur_user = g.db.execute(
             "INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES (?,?,?,?)",
-            (nombre, email, generate_password_hash(password), "inquilino"),
+            (nombre, email, _hash_password(password), "inquilino"),
         )
         usuario_id = cur_user.lastrowid
         creado_usuario = True
@@ -1056,6 +1183,7 @@ def crear_inquilino():
     """, (nombre, data.get("documento", ""), email, data.get("telefono", ""),
           data.get("direccion", ""), data.get("referencia", ""), usuario_id, propietario_id))
     g.db.commit()
+    _log_evento("crear_inquilino", entidad_tipo="inquilino", entidad_id=cur.lastrowid, detalles=f"email={email}", usuario_id=user["id"])
     return jsonify({"ok": True, "id": cur.lastrowid, "usuario_id": usuario_id, "creado_usuario": creado_usuario}), 201
 
 
@@ -1093,12 +1221,16 @@ def gestionar_inquilino(inquilino_id):
         existente = query_one("SELECT id FROM usuarios WHERE lower(email)=?", (email,))
         if existente:
             return jsonify({"error": "Ya existe un usuario con ese email"}), 400
+        err = _validar_password(password)
+        if err:
+            return jsonify({"error": err}), 400
         cur = g.db.execute(
             "INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES (?,?,?,?)",
-            (inq["nombre"], email, generate_password_hash(password), "inquilino"),
+            (inq["nombre"], email, _hash_password(password), "inquilino"),
         )
         g.db.execute("UPDATE inquilinos SET usuario_id=?, email=? WHERE id=?", (cur.lastrowid, email, inquilino_id))
         g.db.commit()
+        _log_evento("crear_cuenta_inquilino", entidad_tipo="inquilino", entidad_id=inquilino_id, usuario_id=user["id"])
         return jsonify({"ok": True, "usuario_id": cur.lastrowid})
 
     # Desactivar / activar cuenta
@@ -1108,17 +1240,20 @@ def gestionar_inquilino(inquilino_id):
         activo = 1 if accion == "activar" else 0
         g.db.execute("UPDATE usuarios SET activo=? WHERE id=?", (activo, inq["usuario_id"]))
         g.db.commit()
+        _log_evento(accion, entidad_tipo="inquilino", entidad_id=inquilino_id, usuario_id=user["id"])
         return jsonify({"ok": True, "activo": activo})
 
     # Resetear contrasena
     if accion == "reset_password":
         password = data.get("password") or ""
-        if not password:
-            return jsonify({"error": "password requerido"}), 400
+        err = _validar_password(password)
+        if err:
+            return jsonify({"error": err}), 400
         if not inq["usuario_id"]:
             return jsonify({"error": "El inquilino no tiene cuenta"}), 400
-        g.db.execute("UPDATE usuarios SET password_hash=? WHERE id=?", (generate_password_hash(password), inq["usuario_id"]))
+        g.db.execute("UPDATE usuarios SET password_hash=? WHERE id=?", (_hash_password(password), inq["usuario_id"]))
         g.db.commit()
+        _log_evento("reset_password", entidad_tipo="inquilino", entidad_id=inquilino_id, usuario_id=user["id"])
         return jsonify({"ok": True})
 
     return jsonify({"error": "accion invalida (crear_cuenta/desactivar/activar/reset_password)"}), 400
