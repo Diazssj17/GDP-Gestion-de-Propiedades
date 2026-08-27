@@ -24,14 +24,14 @@ import NuevoMantenimientoScreen from '../screens/NuevoMantenimientoScreen';
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
-const cardHeader = (theme) => ({ headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerRight: () => <HeaderRight /> });
+const cardHeader = (theme) => ({ headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerRight: () => <HeaderRight />, headerTitle: '' });
 
 function PropiedadesStack() {
   const { theme } = useTheme();
   return (
     <Stack.Navigator>
-      <Stack.Screen name="PropiedadesList" component={PropiedadesScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="Unidades" component={UnidadesScreen} options={{ title: 'Unidades', ...cardHeader(theme) }} />
+      <Stack.Screen name="PropiedadesList" component={PropiedadesScreen} options={{ headerTitle: '', ...cardHeader(theme) }} />
+      <Stack.Screen name="Unidades" component={UnidadesScreen} options={{ headerTitle: '', ...cardHeader(theme) }} />
     </Stack.Navigator>
   );
 }
@@ -41,7 +41,7 @@ function ContratosStack() {
   const { theme } = useTheme();
   return (
     <Stack.Navigator>
-      <Stack.Screen name="ContratosList" component={ContratosScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="ContratosList" component={ContratosScreen} options={{ headerTitle: '', ...cardHeader(theme) }} />
       <Stack.Screen name="NuevoContrato" component={NuevoContratoScreen} options={{ title: 'Nuevo contrato', ...cardHeader(theme) }} />
     </Stack.Navigator>
   );
@@ -50,7 +50,7 @@ function PagosStack() {
   const { theme } = useTheme();
   return (
     <Stack.Navigator>
-      <Stack.Screen name="PagosList" component={PagosScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="PagosList" component={PagosScreen} options={{ headerTitle: '', ...cardHeader(theme) }} />
       <Stack.Screen name="NuevoPago" component={NuevoPagoScreen} options={{ title: 'Nuevo pago', ...cardHeader(theme) }} />
     </Stack.Navigator>
   );
@@ -59,7 +59,7 @@ function ServiciosStack() {
   const { theme } = useTheme();
   return (
     <Stack.Navigator>
-      <Stack.Screen name="ServiciosList" component={ServiciosScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="ServiciosList" component={ServiciosScreen} options={{ headerTitle: '', ...cardHeader(theme) }} />
       <Stack.Screen name="NuevoRecibo" component={NuevoReciboScreen} options={{ title: 'Nuevo recibo', ...cardHeader(theme) }} />
     </Stack.Navigator>
   );
@@ -68,7 +68,7 @@ function MantenimientoStack() {
   const { theme } = useTheme();
   return (
     <Stack.Navigator>
-      <Stack.Screen name="MantenimientoList" component={MantenimientoScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="MantenimientoList" component={MantenimientoScreen} options={{ headerTitle: '', ...cardHeader(theme) }} />
       <Stack.Screen name="NuevoMantenimiento" component={NuevoMantenimientoScreen} options={{ title: 'Nuevo ticket', ...cardHeader(theme) }} />
     </Stack.Navigator>
   );
