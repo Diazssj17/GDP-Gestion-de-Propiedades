@@ -198,6 +198,40 @@ def detectar_mora():
     )
     g.db.commit()
 
+# --- Planes (solo superadmin) ---
+@app.route("/api/planes")
+def list_planes():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] != "superadmin":
+        return jsonify({"error": "No autorizado (solo superadmin)"}), 403
+    rows = query_all("SELECT * FROM planes ORDER BY id")
+    return jsonify([row_to_dict(r) for r in rows])
+
+
+@app.route("/api/planes/<int:plan_id>", methods=["PATCH"])
+def actualizar_plan(plan_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] != "superadmin":
+        return jsonify({"error": "No autorizado (solo superadmin)"}), 403
+    plan = query_one("SELECT * FROM planes WHERE id=?", (plan_id,))
+    if not plan:
+        return jsonify({"error": "Plan no existe"}), 404
+    data = request.get_json(silent=True) or {}
+    g.db.execute("""
+        UPDATE planes SET nombre=?, descripcion=?, precio_mensual=?, max_propiedades=?, max_unidades=?,
+            max_usuarios=?, almacenamiento_mb=? WHERE id=?
+    """, (data.get("nombre", plan["nombre"]), data.get("descripcion", plan["descripcion"]),
+          data.get("precio_mensual", plan["precio_mensual"]), data.get("max_propiedades", plan["max_propiedades"]),
+          data.get("max_unidades", plan["max_unidades"]), data.get("max_usuarios", plan["max_usuarios"]),
+          data.get("almacenamiento_mb", plan["almacenamiento_mb"]), plan_id))
+    g.db.commit()
+    return jsonify({"ok": True})
+
+
 # --- Propietarios (solo superadmin) ---
 @app.route("/api/propietarios")
 def list_propietarios():
@@ -206,15 +240,123 @@ def list_propietarios():
         return jsonify({"error": "No autenticado"}), 401
     if user["rol"] != "superadmin":
         return jsonify({"error": "No autorizado (solo superadmin)"}), 403
-    page = int(request.args.get("page", 1))
-    per_page = int(request.args.get("per_page", 20))
-    offset = (page - 1) * per_page
     rows = query_all("""
-        SELECT p.id, u.nombre, u.email, p.tipo, p.ciudad, p.documento
-        FROM propietarios p JOIN usuarios u ON u.id = p.usuario_id
-        ORDER BY p.id LIMIT ? OFFSET ?
-    """, (per_page, offset))
+        SELECT p.id, u.nombre, u.email, u.activo as usuario_activo, p.tipo, p.ciudad, p.documento,
+               pl.nombre as plan_nombre, pl.id as plan_id, s.estado as suscripcion_estado
+        FROM propietarios p
+        JOIN usuarios u ON u.id = p.usuario_id
+        LEFT JOIN suscripciones s ON s.usuario_id = u.id AND s.estado = 'activa'
+        LEFT JOIN planes pl ON pl.id = s.plan_id
+        ORDER BY p.id
+    """)
     return jsonify([row_to_dict(r) for r in rows])
+
+
+@app.route("/api/propietarios", methods=["POST"])
+def crear_propietario():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] != "superadmin":
+        return jsonify({"error": "No autorizado (solo superadmin)"}), 403
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get("nombre") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    if not nombre or not email or not password:
+        return jsonify({"error": "nombre, email y password requeridos"}), 400
+    if query_one("SELECT id FROM usuarios WHERE lower(email)=?", (email,)):
+        return jsonify({"error": "Ya existe un usuario con ese email"}), 400
+    cur_user = g.db.execute(
+        "INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES (?,?,?,?)",
+        (nombre, email, generate_password_hash(password), "propietario"),
+    )
+    uid = cur_user.lastrowid
+    cur = g.db.execute("""
+        INSERT INTO propietarios (usuario_id, tipo, documento, direccion, ciudad)
+        VALUES (?,?,?,?,?)
+    """, (uid, data.get("tipo", "persona"), data.get("documento", ""), data.get("direccion", ""), data.get("ciudad", "")))
+    # Asigna plan si viene
+    if data.get("plan_id"):
+        g.db.execute("INSERT INTO suscripciones (usuario_id, plan_id, estado) VALUES (?,?,?)",
+                     (uid, data["plan_id"], "activa"))
+    g.db.commit()
+    return jsonify({"ok": True, "id": cur.lastrowid, "usuario_id": uid}), 201
+
+
+@app.route("/api/propietarios/<int:propietario_id>")
+def detalle_propietario(propietario_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] != "superadmin":
+        return jsonify({"error": "No autorizado (solo superadmin)"}), 403
+    p = query_one("""
+        SELECT p.*, u.nombre, u.email, u.activo as usuario_activo,
+               pl.nombre as plan_nombre, pl.id as plan_id, pl.max_propiedades, pl.max_unidades, s.estado as suscripcion_estado
+        FROM propietarios p
+        JOIN usuarios u ON u.id = p.usuario_id
+        LEFT JOIN suscripciones s ON s.usuario_id = u.id AND s.estado = 'activa'
+        LEFT JOIN planes pl ON pl.id = s.plan_id
+        WHERE p.id = ?
+    """, (propietario_id,))
+    if not p:
+        return jsonify({"error": "Propietario no existe"}), 404
+    d = row_to_dict(p)
+    d["stats"] = {
+        "propiedades": query_one("SELECT COUNT(*) as c FROM propiedades WHERE propietario_id=?", (propietario_id,))["c"],
+        "unidades": query_one("""
+            SELECT COUNT(*) as c FROM unidades u JOIN propiedades pr ON pr.id = u.propiedad_id
+            WHERE pr.propietario_id = ?
+        """, (propietario_id,))["c"],
+        "contratos": query_one("""
+            SELECT COUNT(*) as c FROM contratos c JOIN unidades u ON u.id=c.unidad_id
+            JOIN propiedades pr ON pr.id=u.propiedad_id WHERE pr.propietario_id = ?
+        """, (propietario_id,))["c"],
+        "inquilinos": query_one("SELECT COUNT(*) as c FROM inquilinos WHERE propietario_id=?", (propietario_id,))["c"],
+    }
+    return jsonify(d)
+
+
+@app.route("/api/propietarios/<int:propietario_id>", methods=["PATCH"])
+def gestionar_propietario(propietario_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] != "superadmin":
+        return jsonify({"error": "No autorizado (solo superadmin)"}), 403
+    p = query_one("SELECT * FROM propietarios WHERE id=?", (propietario_id,))
+    if not p:
+        return jsonify({"error": "Propietario no existe"}), 404
+    data = request.get_json(silent=True) or {}
+    accion = data.get("accion")
+
+    if accion == "asignar_plan":
+        plan_id = data.get("plan_id")
+        if not plan_id:
+            return jsonify({"error": "plan_id requerido"}), 400
+        # deja inactivas las suscripciones previas y crea una nueva activa
+        g.db.execute("UPDATE suscripciones SET estado='cancelada' WHERE usuario_id=? AND estado='activa'", (p["usuario_id"],))
+        g.db.execute("INSERT INTO suscripciones (usuario_id, plan_id, estado) VALUES (?,?,?)", (p["usuario_id"], plan_id, "activa"))
+        g.db.commit()
+        return jsonify({"ok": True})
+
+    if accion in ("activar", "desactivar"):
+        activo = 1 if accion == "activar" else 0
+        g.db.execute("UPDATE usuarios SET activo=? WHERE id=?", (activo, p["usuario_id"]))
+        g.db.commit()
+        return jsonify({"ok": True, "activo": activo})
+
+    if accion == "reset_password":
+        password = data.get("password") or ""
+        if not password:
+            return jsonify({"error": "password requerido"}), 400
+        g.db.execute("UPDATE usuarios SET password_hash=? WHERE id=?", (generate_password_hash(password), p["usuario_id"]))
+        g.db.commit()
+        return jsonify({"ok": True})
+
+    return jsonify({"error": "accion invalida (asignar_plan/activar/desactivar/reset_password)"}), 400
+
 
 # --- Propiedades (superadmin: todas | propietario: solo las suyas) ---
 @app.route("/api/propiedades")

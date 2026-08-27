@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
+import { useAuth } from '../auth/AuthContext';
 
 const MODULOS = [
   { name: 'Contratos', icon: 'document-text', desc: 'Unidad ↔ Inquilino · renovar, terminar', color: '#2563EB' },
@@ -11,12 +12,15 @@ const MODULOS = [
 
 export default function MasMenuScreen({ navigation }) {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const c = theme.colors;
+  const esAdmin = user?.rol === 'superadmin';
+  const modulos = esAdmin ? [...MODULOS, { name: 'Propietarios', icon: 'people', desc: 'Cuentas y planes de propietarios', color: '#7C3AED' }, { name: 'Planes', icon: 'pricetags', desc: 'Precios y límites', color: '#0F766E' }] : MODULOS;
   return (
     <View style={[s.container, { backgroundColor: c.background }]}>
       <Text style={[s.header, { color: c.text }]}>Más módulos</Text>
       <Text style={[s.sub, { color: c.textSecondary }]}>Gestión y operación diaria</Text>
-      {MODULOS.map(m => (
+      {modulos.map(m => (
         <TouchableOpacity key={m.name} style={[s.card, { backgroundColor: c.card }]} onPress={() => navigation.navigate(m.name)}>
           <View style={[s.icon, { backgroundColor: m.color + '22' }]}>
             <Ionicons name={m.icon} size={22} color={m.color} />

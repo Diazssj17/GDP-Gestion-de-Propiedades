@@ -20,6 +20,8 @@ import ServiciosScreen from '../screens/ServiciosScreen';
 import NuevoReciboScreen from '../screens/NuevoReciboScreen';
 import MantenimientoScreen from '../screens/MantenimientoScreen';
 import NuevoMantenimientoScreen from '../screens/NuevoMantenimientoScreen';
+import PropietariosScreen from '../screens/PropietariosScreen';
+import PlanesScreen from '../screens/PlanesScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -87,6 +89,8 @@ function MasStack() {
       <Stack.Screen name="NuevoRecibo" component={NuevoReciboScreen} options={{ title: 'Nuevo recibo', ...cardHeader(theme) }} />
       <Stack.Screen name="Mantenimiento" component={MantenimientoScreen} options={{ title: 'Mantenimiento', ...cardHeader(theme) }} />
       <Stack.Screen name="NuevoMantenimiento" component={NuevoMantenimientoScreen} options={{ title: 'Nuevo ticket', ...cardHeader(theme) }} />
+      <Stack.Screen name="Propietarios" component={PropietariosScreen} options={{ title: 'Propietarios', ...cardHeader(theme) }} />
+      <Stack.Screen name="Planes" component={PlanesScreen} options={{ title: 'Planes', ...cardHeader(theme) }} />
     </Stack.Navigator>
   );
 }
