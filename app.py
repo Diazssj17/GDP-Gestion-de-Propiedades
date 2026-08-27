@@ -122,6 +122,12 @@ def me():
     if user["rol"] == "propietario":
         prop = query_one("SELECT id, tipo, documento, ciudad FROM propietarios WHERE usuario_id=?", (user["id"],))
         data["perfil"] = row_to_dict(prop) or {}
+        if prop:
+            plan = query_one("""
+                SELECT pl.* FROM suscripciones s JOIN planes pl ON pl.id = s.plan_id
+                WHERE s.usuario_id = ? AND s.estado = 'activa'
+            """, (user["id"],))
+            data["plan"] = row_to_dict(plan) or {}
     elif user["rol"] == "inquilino":
         inq = query_one("SELECT * FROM inquilinos WHERE usuario_id=?", (user["id"],))
         data["perfil"] = row_to_dict(inq) or {}
@@ -182,6 +188,24 @@ def health():
 def _id_propietario_del_usuario(usuario_id):
     p = query_one("SELECT id FROM propietarios WHERE usuario_id=?", (usuario_id,))
     return p["id"] if p else None
+
+def _plan_del_propietario(propietario_id):
+    """Devuelve el plan activo del propietario o None."""
+    return query_one("""
+        SELECT pl.* FROM propietarios p
+        JOIN suscripciones s ON s.usuario_id = p.usuario_id AND s.estado = 'activa'
+        JOIN planes pl ON pl.id = s.plan_id
+        WHERE p.id = ? LIMIT 1
+    """, (propietario_id,))
+
+def _contar_propiedades(propietario_id):
+    return query_one("SELECT COUNT(*) as c FROM propiedades WHERE propietario_id=?", (propietario_id,))["c"]
+
+def _contar_unidades(propietario_id):
+    return query_one("""
+        SELECT COUNT(*) as c FROM unidades u JOIN propiedades pr ON pr.id = u.propiedad_id
+        WHERE pr.propietario_id = ?
+    """, (propietario_id,))["c"]
 
 def _id_unidades_del_propietario(propietario_id):
     rows = query_all("""
@@ -500,8 +524,166 @@ def list_unidades():
     sql += " ORDER BY id LIMIT 50"
     return jsonify([row_to_dict(r) for r in query_all(sql, params)])
 
-@app.route("/api/contratos")
-def list_contratos():
+
+# --- CRUD Propiedades (limitado por plan) ---
+@app.route("/api/propiedades", methods=["POST"])
+def crear_propiedad():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get("nombre") or "").strip()
+    if not nombre:
+        return jsonify({"error": "nombre requerido"}), 400
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        if pid is None:
+            return jsonify({"error": "No autorizado"}), 403
+        plan = _plan_del_propietario(pid)
+        if plan is None or plan["max_propiedades"] is None:
+            return jsonify({"error": "No tiene plan activo"}), 403
+        if _contar_propiedades(pid) >= int(plan["max_propiedades"]):
+            return jsonify({"error": f"Limite del plan: máximo {plan['max_propiedades']} propiedades"}), 403
+    else:
+        pid = data.get("propietario_id")
+        if not pid:
+            return jsonify({"error": "propietario_id requerido"}), 400
+    cur = g.db.execute("""
+        INSERT INTO propiedades (propietario_id, nombre, tipo, direccion, ciudad, barrio, estrato, descripcion, num_unidades, area_total_m2, estado)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
+    """, (pid, nombre, data.get("tipo", "casa"), data.get("direccion", ""), data.get("ciudad", ""),
+          data.get("barrio", ""), data.get("estrato", 0), data.get("descripcion", ""), data.get("num_unidades", 1),
+          data.get("area_total_m2", 0), data.get("estado", "activa")))
+    g.db.commit()
+    return jsonify({"ok": True, "id": cur.lastrowid}), 201
+
+
+@app.route("/api/propiedades/<int:propiedad_id>", methods=["PATCH"])
+def actualizar_propiedad(propiedad_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
+    p = query_one("SELECT * FROM propiedades WHERE id=?", (propiedad_id,))
+    if not p:
+        return jsonify({"error": "Propiedad no existe"}), 404
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        if pid is None or p["propietario_id"] != pid:
+            return jsonify({"error": "No autorizado sobre esa propiedad"}), 403
+    data = request.get_json(silent=True) or {}
+    g.db.execute("""
+        UPDATE propiedades SET nombre=?, tipo=?, direccion=?, ciudad=?, barrio=?, estrato=?, descripcion=?, area_total_m2=?, estado=? WHERE id=?
+    """, (data.get("nombre", p["nombre"]), data.get("tipo", p["tipo"]), data.get("direccion", p["direccion"]),
+          data.get("ciudad", p["ciudad"]), data.get("barrio", p["barrio"]), data.get("estrato", p["estrato"]),
+          data.get("descripcion", p["descripcion"]), data.get("area_total_m2", p["area_total_m2"]),
+          data.get("estado", p["estado"]), propiedad_id))
+    g.db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/propiedades/<int:propiedad_id>", methods=["DELETE"])
+def eliminar_propiedad(propiedad_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
+    p = query_one("SELECT * FROM propiedades WHERE id=?", (propiedad_id,))
+    if not p:
+        return jsonify({"error": "Propiedad no existe"}), 404
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        if pid is None or p["propietario_id"] != pid:
+            return jsonify({"error": "No autorizado sobre esa propiedad"}), 403
+    g.db.execute("DELETE FROM propiedades WHERE id=?", (propiedad_id,))
+    g.db.commit()
+    return jsonify({"ok": True})
+
+
+# --- CRUD Unidades (limitado por plan) ---
+@app.route("/api/unidades", methods=["POST"])
+def crear_unidad():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
+    data = request.get_json(silent=True) or {}
+    propiedad_id = data.get("propiedad_id")
+    propiedad = query_one("SELECT * FROM propiedades WHERE id=?", (propiedad_id,))
+    if not propiedad:
+        return jsonify({"error": "Propiedad no existe"}), 404
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        if pid is None or propiedad["propietario_id"] != pid:
+            return jsonify({"error": "No autorizado sobre esa propiedad"}), 403
+        plan = _plan_del_propietario(pid)
+        if plan is None or plan["max_unidades"] is None:
+            return jsonify({"error": "No tiene plan activo"}), 403
+        if _contar_unidades(pid) >= int(plan["max_unidades"]):
+            return jsonify({"error": f"Limite del plan: máximo {plan['max_unidades']} unidades"}), 403
+    codigo = data.get("codigo")
+    if not codigo:
+        return jsonify({"error": "codigo requerido"}), 400
+    cur = g.db.execute("""
+        INSERT INTO unidades (propiedad_id, codigo, nombre, tipo, habitaciones, banos, area_m2, canon_base, administracion, estado, descripcion)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
+    """, (propiedad_id, codigo, data.get("nombre", ""), data.get("tipo", "apartamento"),
+          data.get("habitaciones", 0), data.get("banos", 0), data.get("area_m2", 0), data.get("canon_base", 0),
+          data.get("administracion", 0), data.get("estado", "disponible"), data.get("descripcion", "")))
+    g.db.commit()
+    return jsonify({"ok": True, "id": cur.lastrowid}), 201
+
+
+@app.route("/api/unidades/<int:unidad_id>", methods=["PATCH"])
+def actualizar_unidad(unidad_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
+    u = query_one("SELECT * FROM unidades WHERE id=?", (unidad_id,))
+    if not u:
+        return jsonify({"error": "Unidad no existe"}), 404
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        prop = query_one("SELECT propietario_id FROM propiedades WHERE id=?", (u["propiedad_id"],))
+        if pid is None or prop is None or prop["propietario_id"] != pid:
+            return jsonify({"error": "No autorizado sobre esa unidad"}), 403
+    data = request.get_json(silent=True) or {}
+    g.db.execute("""
+        UPDATE unidades SET codigo=?, nombre=?, tipo=?, habitaciones=?, banos=?, area_m2=?, canon_base=?, administracion=?, estado=?, descripcion=? WHERE id=?
+    """, (data.get("codigo", u["codigo"]), data.get("nombre", u["nombre"]), data.get("tipo", u["tipo"]),
+          data.get("habitaciones", u["habitaciones"]), data.get("banos", u["banos"]), data.get("area_m2", u["area_m2"]),
+          data.get("canon_base", u["canon_base"]), data.get("administracion", u["administracion"]),
+          data.get("estado", u["estado"]), data.get("descripcion", u["descripcion"]), unidad_id))
+    g.db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/unidades/<int:unidad_id>", methods=["DELETE"])
+def eliminar_unidad(unidad_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
+    u = query_one("SELECT * FROM unidades WHERE id=?", (unidad_id,))
+    if not u:
+        return jsonify({"error": "Unidad no existe"}), 404
+    if user["rol"] == "propietario":
+        pid = _id_propietario_del_usuario(user["id"])
+        prop = query_one("SELECT propietario_id FROM propiedades WHERE id=?", (u["propiedad_id"],))
+        if pid is None or prop is None or prop["propietario_id"] != pid:
+            return jsonify({"error": "No autorizado sobre esa unidad"}), 403
+    g.db.execute("DELETE FROM unidades WHERE id=?", (unidad_id,))
+    g.db.commit()
+    return jsonify({"ok": True})
+
     user = require_auth()
     if not user:
         return jsonify({"error": "No autenticado"}), 401
