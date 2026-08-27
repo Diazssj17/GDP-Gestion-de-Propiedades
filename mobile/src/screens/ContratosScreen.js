@@ -3,6 +3,7 @@ import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, 
 import { Ionicons } from '@expo/vector-icons';
 import { api, BASE_URL } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
+import { useAuth } from '../auth/AuthContext';
 
 const estadoColor = { activo: '#059669', pendiente: '#EA580C', vencido: '#DC2626', proximo_a_vencer: '#D97706', terminado: '#64748B', cancelado: '#64748B' };
 const TIPO_LABEL = { contrato: 'Contrato', cedula: 'Cédula', certificado_laboral: 'Certificado laboral', fiador: 'Fiador', otro: 'Otro' };
@@ -11,7 +12,9 @@ const FILTROS = ['', 'activo', 'pendiente', 'vencido', 'proximo_a_vencer', 'term
 
 export default function ContratosScreen({ navigation }) {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const c = theme.colors;
+  const esInquilino = user?.rol === 'inquilino';
   const [filtro, setFiltro] = useState('');
   const [data, setData] = useState([]);
   const [docsMap, setDocsMap] = useState({});
@@ -87,6 +90,8 @@ export default function ContratosScreen({ navigation }) {
               <View style={[s.badge, { backgroundColor: estadoColor[item.estado] || '#64748B' }]}><Text style={s.badgeText}>{ESTADO_LABEL[item.estado] || item.estado}</Text></View>
             </View>
             <Text style={[s.meta, { color: c.textSecondary }]}>{item.fecha_inicio} → {item.fecha_fin} · Canon ${Number(item.canon).toLocaleString('es-CO')}</Text>
+            {item.propiedad_nombre ? <Text style={[s.meta, { color: c.textSecondary }]}>Propiedad: {item.propiedad_nombre}</Text> : null}
+            {item.propietario_nombre ? <Text style={[s.meta, { color: c.textSecondary }]}>Propietario: {item.propietario_nombre}</Text> : null}
             {item.documento ? (
               <TouchableOpacity onPress={() => Linking.openURL(`${BASE_URL}/static/uploads/contratos/${item.documento}`)}>
                 <Text style={[s.docLink, { color: c.accent }]}>📄 Contrato (documento principal)</Text>
@@ -97,7 +102,7 @@ export default function ContratosScreen({ navigation }) {
                 <Text style={[s.docLink, { color: c.accent }]}>📄 {TIPO_LABEL[d.tipo] || d.tipo}: {d.nombre}</Text>
               </TouchableOpacity>
             ))}
-            {item.estado === 'activo' || item.estado === 'proximo_a_vencer' || item.estado === 'vencido' ? (
+            {!esInquilino && (item.estado === 'activo' || item.estado === 'proximo_a_vencer' || item.estado === 'vencido' ? (
               <View style={s.actions}>
                 <TouchableOpacity style={[s.actBtn, { borderColor: c.accent }]} onPress={() => abrirRenovar(item)}>
                   <Ionicons name="refresh" size={15} color={c.accent} />
@@ -112,13 +117,15 @@ export default function ContratosScreen({ navigation }) {
                   <Text style={{ color: c.textMuted, fontWeight: '600', fontSize: 13 }}>Cancelar</Text>
                 </TouchableOpacity>
               </View>
-            ) : null}
+            ) : null)}
           </View>
         )}
       />
-      <TouchableOpacity style={[s.fab, { backgroundColor: c.primary }]} onPress={() => navigation.navigate('NuevoContrato')}>
-        <Ionicons name="add" size={28} color="#fff" />
-      </TouchableOpacity>
+      {!esInquilino && (
+        <TouchableOpacity style={[s.fab, { backgroundColor: c.primary }]} onPress={() => navigation.navigate('NuevoContrato')}>
+          <Ionicons name="add" size={28} color="#fff" />
+        </TouchableOpacity>
+      )}
 
       <Modal visible={!!renovar} transparent animationType="slide">
         <View style={s.overlay}>

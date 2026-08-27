@@ -57,7 +57,7 @@ export default function ServiciosScreen({ navigation }) {
           contentContainerStyle={{ paddingBottom: 90 }}
           ListEmptyComponent={<Text style={[s.empty, { color: c.textMuted }]}>Sin recibos en este filtro.</Text>}
           renderItem={({ item }) => (
-            <TouchableOpacity style={[s.card, { backgroundColor: c.card }]} onPress={() => abrirMarcar(item)} activeOpacity={0.8}>
+            <TouchableOpacity style={[s.card, { backgroundColor: c.card }]} onPress={() => !esInquilino && abrirMarcar(item)} activeOpacity={0.8}>
               <View style={s.row}>
                 <View style={{ flex: 1 }}>
                   <Text style={[s.title, { color: c.text }]}>{item.servicio_nombre} · {item.propiedad_nombre}</Text>
@@ -79,7 +79,7 @@ export default function ServiciosScreen({ navigation }) {
                   ))}
                 </View>
               ) : null}
-              <Text style={[s.link, { color: c.accent }]}>Cambiar estado →</Text>
+              {!esInquilino && <Text style={[s.link, { color: c.accent }]}>Cambiar estado →</Text>}
             </TouchableOpacity>
           )}
         />

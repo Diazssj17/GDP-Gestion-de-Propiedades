@@ -74,7 +74,7 @@ export default function AppNavigator() {
     <NavigationContainer theme={navTheme}>
       <Tab.Navigator screenOptions={screenOptions}>
         <Tab.Screen name="Inicio" component={DashboardScreen} options={{ headerTitle: '' }} />
-        <Tab.Screen name="Propiedades" component={PropiedadesStack} options={{ headerShown: false }} />
+        {!esInquilino && <Tab.Screen name="Propiedades" component={PropiedadesStack} options={{ headerShown: false }} />}
         {!esInquilino && <Tab.Screen name="Inquilinos" component={InquilinosScreen} options={{ headerTitle: '' }} />}
         <Tab.Screen name="Más" component={MasStack} options={{ headerShown: false }} />
       </Tab.Navigator>

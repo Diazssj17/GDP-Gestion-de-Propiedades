@@ -10,13 +10,19 @@ export default function DashboardScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const c = theme.colors;
+  const esInquilino = user?.rol === 'inquilino';
   const [data, setData] = useState(null);
+  const [vinculacion, setVinculacion] = useState(null);
   const [loading, setLoading] = useState(true);
   const load = async () => {
     setLoading(true);
     try {
       const res = await api.resumen();
       setData(res);
+      if (esInquilino) {
+        const me = await api.me();
+        setVinculacion(me.vinculacion || null);
+      }
     } catch (e) {
       console.log('usando mock', e.message);
       setData(mockResumen);
@@ -36,6 +42,14 @@ export default function DashboardScreen() {
         <Card title="Disponibles" value={data.disponibles} color={c.info} />
         <Card title="Mantenimiento" value={data.mantenimiento_pendiente} subtitle="tickets pendientes" color={c.warning} />
       </View>
+      {esInquilino && vinculacion && (
+        <View style={[s.info, { backgroundColor: theme.dark ? '#12243B' : '#EFF6FF', borderColor: theme.dark ? '#1E3A5F' : '#DBEAFE' }]}>
+          <Text style={[s.infoTitle, { color: c.accent }]}>Mi alquiler</Text>
+          <Text style={[s.infoText, { color: c.textSecondary }]}>Unidad {vinculacion.unidad_codigo} · {vinculacion.propiedad_nombre}</Text>
+          <Text style={[s.infoText, { color: c.textSecondary }]}>Propietario: {vinculacion.propietario_nombre}</Text>
+          <Text style={[s.infoText, { color: c.textSecondary }]}>Canon ${Number(vinculacion.canon).toLocaleString('es-CO')} · hasta {vinculacion.fecha_fin}</Text>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -44,4 +58,7 @@ const s = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { fontSize: 22, fontWeight: '900', marginBottom: 16 },
   grid: { gap: 2 },
+  info: { borderRadius: 12, padding: 14, marginTop: 12, borderWidth: 1 },
+  infoTitle: { fontWeight: '700' },
+  infoText: { marginTop: 4, fontSize: 12 },
 });

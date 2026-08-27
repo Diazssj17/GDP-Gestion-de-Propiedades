@@ -123,8 +123,22 @@ def me():
         prop = query_one("SELECT id, tipo, documento, ciudad FROM propietarios WHERE usuario_id=?", (user["id"],))
         data["perfil"] = row_to_dict(prop) or {}
     elif user["rol"] == "inquilino":
-        inq = query_one("SELECT id, nombre, documento FROM inquilinos WHERE usuario_id=?", (user["id"],))
+        inq = query_one("SELECT * FROM inquilinos WHERE usuario_id=?", (user["id"],))
         data["perfil"] = row_to_dict(inq) or {}
+        # Vinculacion: contrato(s) activo(s) + propiedad + propietario
+        if inq:
+            ctr = query_one("""
+                SELECT c.id as contrato_id, c.fecha_inicio, c.fecha_fin, c.canon, c.estado,
+                       u.codigo as unidad_codigo, pr.nombre as propiedad_nombre, pu.nombre as propietario_nombre
+                FROM contratos c
+                JOIN unidades u ON u.id = c.unidad_id
+                JOIN propiedades pr ON pr.id = u.propiedad_id
+                JOIN propietarios po ON po.id = pr.propietario_id
+                JOIN usuarios pu ON pu.id = po.usuario_id
+                WHERE c.inquilino_id = ? AND c.estado = 'activo'
+                ORDER BY c.fecha_inicio DESC LIMIT 1
+            """, (inq["id"],))
+            data["vinculacion"] = row_to_dict(ctr) or {}
     return jsonify(data)
 
 @app.route("/api/logout", methods=["POST"])
@@ -269,10 +283,14 @@ def list_contratos():
         return jsonify({"error": "No autenticado"}), 401
     estado = request.args.get("estado")
     sql = """
-        SELECT c.*, u.codigo as unidad_codigo, i.nombre as inquilino_nombre
+        SELECT c.*, u.codigo as unidad_codigo, i.nombre as inquilino_nombre,
+               u.propiedad_id, pr.nombre as propiedad_nombre, pu.nombre as propietario_nombre
         FROM contratos c
         JOIN unidades u ON u.id = c.unidad_id
         JOIN inquilinos i ON i.id = c.inquilino_id
+        JOIN propiedades pr ON pr.id = u.propiedad_id
+        JOIN propietarios po ON po.id = pr.propietario_id
+        JOIN usuarios pu ON pu.id = po.usuario_id
     """
     where = []
     params = []
@@ -970,24 +988,11 @@ def actualizar_recibo(recibo_id):
     user = require_auth()
     if not user:
         return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] not in ("superadmin", "propietario"):
+        return jsonify({"error": "No autorizado"}), 403
     recibo = query_one("SELECT * FROM recibos WHERE id=?", (recibo_id,))
     if not recibo:
         return jsonify({"error": "Recibo no existe"}), 404
-    if user["rol"] == "inquilino":
-        # El inquilino solo puede marcar recibos distribuidos a su unidad (no crear/editar mas)
-        inq = query_one("SELECT id FROM inquilinos WHERE usuario_id=?", (user["id"],))
-        if not inq:
-            return jsonify({"error": "No autorizado"}), 403
-        tiene = query_one("""
-            SELECT 1 FROM distribucion_servicios d
-            JOIN unidades u ON u.id = d.unidad_id
-            JOIN contratos c ON c.unidad_id = u.id
-            WHERE d.recibo_id=? AND c.inquilino_id=? AND c.estado='activo'
-        """, (recibo_id, inq["id"]))
-        if not tiene:
-            return jsonify({"error": "No autorizado"}), 403
-    elif user["rol"] not in ("superadmin", "propietario"):
-        return jsonify({"error": "No autorizado"}), 403
     data = request.get_json(silent=True) or {}
     estado = data.get("estado")
     if estado not in ("pendiente", "pagado", "vencido", "parcial"):
