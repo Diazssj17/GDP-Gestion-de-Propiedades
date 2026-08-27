@@ -3,13 +3,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 
 const ICONS = {
-  Dashboard: 'analytics',
+  Inicio: 'home',
   Propiedades: 'business',
   Inquilinos: 'people',
-  Contratos: 'document-text',
-  Pagos: 'cash',
-  Servicios: 'water',
-  Mantenimiento: 'construct',
+  'Más': 'grid',
 };
 
 export default function ScrollableTabBar({ state, descriptors, navigation }) {
