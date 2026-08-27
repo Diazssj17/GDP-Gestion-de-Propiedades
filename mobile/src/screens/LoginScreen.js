@@ -6,8 +6,8 @@ import { useTheme } from '../theme/ThemeContext';
 export default function LoginScreen() {
   const { login } = useAuth();
   const { theme, isDark, toggle } = useTheme();
-  const [email, setEmail] = useState('demo@propietario.com');
-  const [password, setPassword] = useState('demo123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
