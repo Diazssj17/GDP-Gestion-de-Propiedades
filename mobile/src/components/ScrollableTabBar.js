@@ -7,6 +7,10 @@ const ICONS = {
   Propiedades: 'business',
   Inquilinos: 'people',
   'Más': 'grid',
+  Contratos: 'document-text',
+  Pagos: 'cash',
+  Servicios: 'water',
+  Mantenimiento: 'construct',
 };
 
 export default function ScrollableTabBar({ state, descriptors, navigation }) {

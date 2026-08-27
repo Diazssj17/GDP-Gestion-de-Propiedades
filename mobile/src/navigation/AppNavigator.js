@@ -36,7 +36,44 @@ function PropiedadesStack() {
   );
 }
 
-// Stack que agrupa los módulos operativos tras la pestaña "Más"
+// Stacks de cada modulo (usados como pestanas directas para el inquilino)
+function ContratosStack() {
+  const { theme } = useTheme();
+  return (
+    <Stack.Navigator>
+      <Stack.Screen name="ContratosList" component={ContratosScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="NuevoContrato" component={NuevoContratoScreen} options={{ title: 'Nuevo contrato', ...cardHeader(theme) }} />
+    </Stack.Navigator>
+  );
+}
+function PagosStack() {
+  const { theme } = useTheme();
+  return (
+    <Stack.Navigator>
+      <Stack.Screen name="PagosList" component={PagosScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="NuevoPago" component={NuevoPagoScreen} options={{ title: 'Nuevo pago', ...cardHeader(theme) }} />
+    </Stack.Navigator>
+  );
+}
+function ServiciosStack() {
+  const { theme } = useTheme();
+  return (
+    <Stack.Navigator>
+      <Stack.Screen name="ServiciosList" component={ServiciosScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="NuevoRecibo" component={NuevoReciboScreen} options={{ title: 'Nuevo recibo', ...cardHeader(theme) }} />
+    </Stack.Navigator>
+  );
+}
+function MantenimientoStack() {
+  const { theme } = useTheme();
+  return (
+    <Stack.Navigator>
+      <Stack.Screen name="MantenimientoList" component={MantenimientoScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="NuevoMantenimiento" component={NuevoMantenimientoScreen} options={{ title: 'Nuevo ticket', ...cardHeader(theme) }} />
+    </Stack.Navigator>
+  );
+}
+// Stack agrupado tras la pestana 'Mas' (para propietario/superadmin)
 function MasStack() {
   const { theme } = useTheme();
   return (
@@ -72,12 +109,21 @@ export default function AppNavigator() {
 
   return (
     <NavigationContainer theme={navTheme}>
-      <Tab.Navigator screenOptions={screenOptions}>
-        <Tab.Screen name="Inicio" component={DashboardScreen} options={{ headerTitle: '' }} />
-        {!esInquilino && <Tab.Screen name="Propiedades" component={PropiedadesStack} options={{ headerShown: false }} />}
-        {!esInquilino && <Tab.Screen name="Inquilinos" component={InquilinosScreen} options={{ headerTitle: '' }} />}
-        <Tab.Screen name="Más" component={MasStack} options={{ headerShown: false }} />
-      </Tab.Navigator>
+      {esInquilino ? (
+        <Tab.Navigator screenOptions={screenOptions}>
+          <Tab.Screen name="Contratos" component={ContratosStack} options={{ headerShown: false }} />
+          <Tab.Screen name="Pagos" component={PagosStack} options={{ headerShown: false }} />
+          <Tab.Screen name="Servicios" component={ServiciosStack} options={{ headerShown: false }} />
+          <Tab.Screen name="Mantenimiento" component={MantenimientoStack} options={{ headerShown: false }} />
+        </Tab.Navigator>
+      ) : (
+        <Tab.Navigator screenOptions={screenOptions}>
+          <Tab.Screen name="Inicio" component={DashboardScreen} options={{ headerTitle: '' }} />
+          <Tab.Screen name="Propiedades" component={PropiedadesStack} options={{ headerShown: false }} />
+          <Tab.Screen name="Inquilinos" component={InquilinosScreen} options={{ headerTitle: '' }} />
+          <Tab.Screen name="Más" component={MasStack} options={{ headerShown: false }} />
+        </Tab.Navigator>
+      )}
     </NavigationContainer>
   );
 }
