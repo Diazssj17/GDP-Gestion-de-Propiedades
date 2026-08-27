@@ -22,6 +22,7 @@ import NuevoReciboScreen from '../screens/NuevoReciboScreen';
 import MantenimientoScreen from '../screens/MantenimientoScreen';
 import NuevoMantenimientoScreen from '../screens/NuevoMantenimientoScreen';
 import PropietariosScreen from '../screens/PropietariosScreen';
+import PropietarioAnalisisScreen from '../screens/PropietarioAnalisisScreen';
 import PlanesScreen from '../screens/PlanesScreen';
 
 const Tab = createBottomTabNavigator();
@@ -35,6 +36,16 @@ function PropiedadesStack() {
     <Stack.Navigator>
       <Stack.Screen name="PropiedadesList" component={PropiedadesScreen} options={{ headerTitle: '', ...cardHeader(theme) }} />
       <Stack.Screen name="Unidades" component={UnidadesScreen} options={{ headerTitle: '', ...cardHeader(theme) }} />
+    </Stack.Navigator>
+  );
+}
+
+function PropietariosStack() {
+  const { theme } = useTheme();
+  return (
+    <Stack.Navigator>
+      <Stack.Screen name="PropietariosList" component={PropietariosScreen} options={{ headerTitle: '', ...cardHeader(theme) }} />
+      <Stack.Screen name="Analisis" component={PropietarioAnalisisScreen} options={{ title: 'Análisis', ...cardHeader(theme) }} />
     </Stack.Navigator>
   );
 }
@@ -117,9 +128,8 @@ export default function AppNavigator() {
       <NavigationContainer theme={navTheme}>
         <Tab.Navigator screenOptions={screenOptions}>
           <Tab.Screen name="Panel" component={AdminDashboardScreen} options={{ headerTitle: '' }} />
-          <Tab.Screen name="Propietarios" component={PropietariosScreen} options={{ headerTitle: '' }} />
+          <Tab.Screen name="Propietarios" component={PropietariosStack} options={{ headerShown: false }} />
           <Tab.Screen name="Planes" component={PlanesScreen} options={{ headerTitle: '' }} />
-          <Tab.Screen name="Más" component={MasStack} options={{ headerShown: false }} />
         </Tab.Navigator>
       </NavigationContainer>
     );

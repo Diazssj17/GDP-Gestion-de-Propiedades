@@ -5,7 +5,7 @@ import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import Picker from '../components/Picker';
 
-export default function PropietariosScreen() {
+export default function PropietariosScreen({ navigation }) {
   const { theme } = useTheme();
   const c = theme.colors;
   const [data, setData] = useState([]);
@@ -135,6 +135,10 @@ export default function PropietariosScreen() {
             <Text style={[s.label, { color: c.textSecondary }]}>Nueva contraseña</Text>
             <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} placeholder="Nueva contraseña" placeholderTextColor={c.placeholder} value={accPass} onChangeText={setAccPass} secureTextEntry />
             {error ? <Text style={s.error}>{error}</Text> : null}
+            <TouchableOpacity style={[s.analizarBtn, { borderColor: c.info }]} onPress={() => navigation.navigate('Analisis', { id: gestionar.id, nombre: gestionar.nombre })}>
+              <Ionicons name="analytics" size={16} color={c.info} />
+              <Text style={{ color: c.info, fontWeight: '700' }}>Analizar propietario</Text>
+            </TouchableOpacity>
             <View style={s.modalBtns}>
               <TouchableOpacity style={[s.btn, s.cancel, { borderColor: c.border }]} onPress={() => setGestionar(null)}><Text style={{ color: c.textSecondary }}>Cerrar</Text></TouchableOpacity>
               <TouchableOpacity style={[s.btn, { backgroundColor: c.primary }]} onPress={() => ejecutar('asignar_plan', { plan_id: nuevoPlanId })} disabled={guardando}>
@@ -180,5 +184,6 @@ const s = StyleSheet.create({
   btn: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center', borderWidth: 1 },
   cancel: { borderWidth: 1 },
   cancel2: { borderWidth: 1 },
+  analizarBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderRadius: 10, paddingVertical: 12, marginTop: 12 },
   btnText: { color: '#fff', fontWeight: '700' },
 });

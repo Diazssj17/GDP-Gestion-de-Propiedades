@@ -392,6 +392,54 @@ def gestionar_propietario(propietario_id):
     return jsonify({"error": "accion invalida (asignar_plan/activar/desactivar/reset_password)"}), 400
 
 
+@app.route("/api/propietarios/<int:propietario_id>/datos")
+def analisis_propietario(propietario_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    if user["rol"] != "superadmin":
+        return jsonify({"error": "No autorizado (solo superadmin)"}), 403
+    if not query_one("SELECT id FROM propietarios WHERE id=?", (propietario_id,)):
+        return jsonify({"error": "Propietario no existe"}), 404
+    propiedades = query_all("SELECT * FROM propiedades WHERE propietario_id=? ORDER BY id", (propietario_id,))
+    unidades = query_all("""
+        SELECT u.*, pr.nombre as propiedad_nombre FROM unidades u
+        JOIN propiedades pr ON pr.id = u.propiedad_id
+        WHERE pr.propietario_id = ? ORDER BY u.id
+    """, (propietario_id,))
+    contratos = query_all("""
+        SELECT c.*, u.codigo as unidad_codigo, i.nombre as inquilino_nombre
+        FROM contratos c JOIN unidades u ON u.id = c.unidad_id JOIN inquilinos i ON i.id = c.inquilino_id
+        WHERE u.propiedad_id IN (SELECT id FROM propiedades WHERE propietario_id=?) ORDER BY c.id
+    """, (propietario_id,))
+    pagos = query_all("""
+        SELECT p.*, c.canon, u.codigo as unidad_codigo, i.nombre as inquilino_nombre
+        FROM pagos p JOIN contratos c ON c.id = p.contrato_id JOIN unidades u ON u.id = c.unidad_id JOIN inquilinos i ON i.id = c.inquilino_id
+        WHERE u.propiedad_id IN (SELECT id FROM propiedades WHERE propietario_id=?) ORDER BY p.fecha_vencimiento DESC
+    """, (propietario_id,))
+    recibos = query_all("""
+        SELECT r.*, s.nombre as servicio_nombre, pr.nombre as propiedad_nombre
+        FROM recibos r JOIN servicios s ON s.id = r.servicio_id JOIN propiedades pr ON pr.id = r.propiedad_id
+        WHERE pr.propietario_id = ? ORDER BY r.id
+    """, (propietario_id,))
+    mantenimientos = query_all("""
+        SELECT m.*, u.codigo as unidad_codigo
+        FROM mantenimientos m JOIN unidades u ON u.id = m.unidad_id
+        WHERE u.propiedad_id IN (SELECT id FROM propiedades WHERE propietario_id=?) ORDER BY m.id
+    """, (propietario_id,))
+    inquilinos = query_all("SELECT * FROM inquilinos WHERE propietario_id=? ORDER BY id", (propietario_id,))
+    return jsonify({
+        "propiedades": [row_to_dict(r) for r in propiedades],
+        "unidades": [row_to_dict(r) for r in unidades],
+        "contratos": [row_to_dict(r) for r in contratos],
+        "pagos": [row_to_dict(r) for r in pagos],
+        "recibos": [row_to_dict(r) for r in recibos],
+        "mantenimientos": [row_to_dict(r) for r in mantenimientos],
+        "inquilinos": [row_to_dict(r) for r in inquilinos],
+    })
+
+
+
 # --- Propiedades (superadmin: todas | propietario: solo las suyas) ---
 @app.route("/api/propiedades")
 def list_propiedades():

@@ -48,6 +48,7 @@ export const api = {
   crearPropietario: (data) => client.post('/api/propietarios', data).then(r => r.data),
   detallePropietario: (id) => client.get(`/api/propietarios/${id}`).then(r => r.data),
   gestionarPropietario: (id, data) => client.patch(`/api/propietarios/${id}`, data).then(r => r.data),
+  propietarioDatos: (id) => client.get(`/api/propietarios/${id}/datos`).then(r => r.data),
   servicios: () => client.get('/api/servicios').then(r => r.data),
   mantenimientos: (params = {}) => client.get('/api/mantenimientos', { params }).then(r => r.data),
   crearMantenimiento: (data) => client.post('/api/mantenimientos', data).then(r => r.data),
