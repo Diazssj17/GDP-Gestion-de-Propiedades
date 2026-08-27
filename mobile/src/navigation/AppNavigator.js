@@ -5,7 +5,6 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../auth/AuthContext';
 import HeaderRight from '../components/HeaderRight';
-import ScrollableTabBar from '../components/ScrollableTabBar';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import AdminDashboardScreen from '../screens/AdminDashboardScreen';
@@ -93,7 +92,6 @@ export default function AppNavigator() {
   const navTheme = { ...(theme.dark ? DarkTheme : DefaultTheme), colors: { ...(theme.dark ? DarkTheme : DefaultTheme).colors, primary: theme.colors.accent, background: theme.colors.background, card: theme.colors.card, text: theme.colors.text, border: theme.colors.border } };
 
   const screenOptions = ({ route }) => ({
-    tabBar: (props) => <ScrollableTabBar {...props} />,
     tabBarActiveTintColor: theme.colors.accent,
     tabBarInactiveTintColor: theme.colors.textMuted,
     headerRight: () => <HeaderRight />,
