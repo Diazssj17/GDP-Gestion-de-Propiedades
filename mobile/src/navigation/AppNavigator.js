@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../auth/AuthContext';
 import HeaderRight from '../components/HeaderRight';
+import ScrollableTabBar from '../components/ScrollableTabBar';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import PropiedadesScreen from '../screens/PropiedadesScreen';
@@ -86,11 +87,11 @@ export default function AppNavigator() {
     },
     tabBarActiveTintColor: theme.colors.accent,
     tabBarInactiveTintColor: theme.colors.textMuted,
+    tabBar: (props) => <ScrollableTabBar {...props} />,
     headerRight: () => <HeaderRight />,
     headerStyle: { backgroundColor: theme.colors.card },
     headerTintColor: theme.colors.text,
     headerTitleStyle: { fontWeight: '700' },
-    tabBarStyle: { backgroundColor: theme.colors.card, borderTopColor: theme.colors.border },
   });
 
   return (
