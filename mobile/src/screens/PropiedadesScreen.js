@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Modal, TextInput, RefreshControl, Alert } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
@@ -38,7 +39,7 @@ export default function PropiedadesScreen({ navigation }) {
     }
     setLoading(false);
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const abrirNueva = () => { setForm({}); setNombre(''); setTipo('casa'); setDireccion(''); setCiudad(''); setError(''); };
   const abrirEditar = (p) => { setForm(p); setNombre(p.nombre); setTipo(p.tipo); setDireccion(p.direccion); setCiudad(p.ciudad); setError(''); };

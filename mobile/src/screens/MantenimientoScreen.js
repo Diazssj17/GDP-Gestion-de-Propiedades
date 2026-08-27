@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl, Image, Modal, TextInput, ScrollView } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api, BASE_URL } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
@@ -29,7 +30,7 @@ export default function MantenimientoScreen({ navigation }) {
     try { setData(await api.mantenimientos(estado ? { estado } : {})); } catch { setData([]); }
     setLoading(false);
   }, []);
-  useEffect(() => { load(''); }, [load]);
+  useFocusEffect(useCallback(() => { load(''); }, [load]));
 
   const abrirEstado = (t) => { setEditar(t); setNuevoEstado(t.estado); setCosto(t.costo_real ? String(t.costo_real) : ''); };
   const confirmarEstado = async () => {

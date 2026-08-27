@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl, Image, Modal, ScrollView } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api, BASE_URL } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
@@ -27,7 +28,7 @@ export default function ServiciosScreen({ navigation }) {
     try { setData(await api.recibos(estado ? { estado } : {})); } catch (e) { setData([]); }
     setLoading(false);
   }, []);
-  useEffect(() => { load(''); }, [load]);
+  useFocusEffect(useCallback(() => { load(''); }, [load]));
 
   const abrirMarcar = (r) => { setMarcar(r); setNuevoEstado(r.estado); };
   const confirmarEstado = async () => {

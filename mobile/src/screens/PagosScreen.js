@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Modal, TextInput, RefreshControl, ScrollView } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
@@ -31,7 +32,7 @@ export default function PagosScreen({ navigation }) {
     try { setData(await api.pagos(estado)); } catch { setData([]); }
     setLoading(false);
   }, []);
-  useEffect(() => { load(''); }, [load]);
+  useFocusEffect(useCallback(() => { load(''); }, [load]));
 
   const restanteDe = (p) => Math.max(0, Number(p.monto) - Number(p.pagado || 0));
 

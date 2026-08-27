@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Modal, TextInput, RefreshControl, Alert } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
@@ -39,7 +40,7 @@ export default function UnidadesScreen({ route }) {
     if (esPropietario) { try { const me = await api.me(); setPlan(me.plan || null); } catch {} }
     setLoading(false);
   }, [propiedad_id]);
-  useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const abrirNueva = () => { setForm({}); setCodigo(''); setUniNombre(''); setTipo('apartamento'); setCanon(''); setArea(''); setEstado('disponible'); setError(''); };
   const abrirEditar = (u) => { setForm(u); setCodigo(u.codigo); setUniNombre(u.nombre || ''); setTipo(u.tipo); setCanon(String(u.canon_base || 0)); setArea(String(u.area_m2 || 0)); setEstado(u.estado); setError(''); };

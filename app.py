@@ -808,6 +808,9 @@ def eliminar_unidad(unidad_id):
     g.db.commit()
     return jsonify({"ok": True})
 
+
+@app.route("/api/contratos")
+def list_contratos():
     user = require_auth()
     if not user:
         return jsonify({"error": "No autenticado"}), 401
