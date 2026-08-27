@@ -1,7 +1,6 @@
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
 
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../auth/AuthContext';
@@ -11,6 +10,8 @@ import ScrollableTabBar from '../components/ScrollableTabBar';
 import DashboardScreen from '../screens/DashboardScreen';
 import PropiedadesScreen from '../screens/PropiedadesScreen';
 import UnidadesScreen from '../screens/UnidadesScreen';
+import InquilinosScreen from '../screens/InquilinosScreen';
+import MasMenuScreen from '../screens/MasMenuScreen';
 import ContratosScreen from '../screens/ContratosScreen';
 import NuevoContratoScreen from '../screens/NuevoContratoScreen';
 import PagosScreen from '../screens/PagosScreen';
@@ -19,57 +20,36 @@ import ServiciosScreen from '../screens/ServiciosScreen';
 import NuevoReciboScreen from '../screens/NuevoReciboScreen';
 import MantenimientoScreen from '../screens/MantenimientoScreen';
 import NuevoMantenimientoScreen from '../screens/NuevoMantenimientoScreen';
-import InquilinosScreen from '../screens/InquilinosScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+
+const cardHeader = (theme) => ({ headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerRight: () => <HeaderRight /> });
 
 function PropiedadesStack() {
   const { theme } = useTheme();
   return (
     <Stack.Navigator>
       <Stack.Screen name="PropiedadesList" component={PropiedadesScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="Unidades" component={UnidadesScreen} options={{ title: 'Unidades', headerRight: () => <HeaderRight />, headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text }} />
+      <Stack.Screen name="Unidades" component={UnidadesScreen} options={{ title: 'Unidades', ...cardHeader(theme) }} />
     </Stack.Navigator>
   );
 }
 
-function ServiciosStack() {
+// Stack que agrupa los módulos operativos tras la pestaña "Más"
+function MasStack() {
   const { theme } = useTheme();
   return (
     <Stack.Navigator>
-      <Stack.Screen name="ServiciosList" component={ServiciosScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="NuevoRecibo" component={NuevoReciboScreen} options={{ title: 'Nuevo recibo', headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerRight: () => <HeaderRight /> }} />
-    </Stack.Navigator>
-  );
-}
-
-function ContratosStack() {
-  const { theme } = useTheme();
-  return (
-    <Stack.Navigator>
-      <Stack.Screen name="ContratosList" component={ContratosScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="NuevoContrato" component={NuevoContratoScreen} options={{ title: 'Nuevo contrato', headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerRight: () => <HeaderRight /> }} />
-    </Stack.Navigator>
-  );
-}
-
-function PagosStack() {
-  const { theme } = useTheme();
-  return (
-    <Stack.Navigator>
-      <Stack.Screen name="PagosList" component={PagosScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="NuevoPago" component={NuevoPagoScreen} options={{ title: 'Nuevo pago', headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerRight: () => <HeaderRight /> }} />
-    </Stack.Navigator>
-  );
-}
-
-function MantenimientoStack() {
-  const { theme } = useTheme();
-  return (
-    <Stack.Navigator>
-      <Stack.Screen name="MantenimientoList" component={MantenimientoScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="NuevoMantenimiento" component={NuevoMantenimientoScreen} options={{ title: 'Nuevo ticket', headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerRight: () => <HeaderRight /> }} />
+      <Stack.Screen name="Menu" component={MasMenuScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Contratos" component={ContratosScreen} options={{ title: 'Contratos', ...cardHeader(theme) }} />
+      <Stack.Screen name="NuevoContrato" component={NuevoContratoScreen} options={{ title: 'Nuevo contrato', ...cardHeader(theme) }} />
+      <Stack.Screen name="Pagos" component={PagosScreen} options={{ title: 'Pagos', ...cardHeader(theme) }} />
+      <Stack.Screen name="NuevoPago" component={NuevoPagoScreen} options={{ title: 'Nuevo pago', ...cardHeader(theme) }} />
+      <Stack.Screen name="Servicios" component={ServiciosScreen} options={{ title: 'Servicios', ...cardHeader(theme) }} />
+      <Stack.Screen name="NuevoRecibo" component={NuevoReciboScreen} options={{ title: 'Nuevo recibo', ...cardHeader(theme) }} />
+      <Stack.Screen name="Mantenimiento" component={MantenimientoScreen} options={{ title: 'Mantenimiento', ...cardHeader(theme) }} />
+      <Stack.Screen name="NuevoMantenimiento" component={NuevoMantenimientoScreen} options={{ title: 'Nuevo ticket', ...cardHeader(theme) }} />
     </Stack.Navigator>
   );
 }
@@ -81,13 +61,9 @@ export default function AppNavigator() {
   const navTheme = { ...(theme.dark ? DarkTheme : DefaultTheme), colors: { ...(theme.dark ? DarkTheme : DefaultTheme).colors, primary: theme.colors.accent, background: theme.colors.background, card: theme.colors.card, text: theme.colors.text, border: theme.colors.border } };
 
   const screenOptions = ({ route }) => ({
-    tabBarIcon: ({ color, size }) => {
-      const map = { Dashboard: 'analytics', Propiedades: 'business', Inquilinos: 'people', Contratos: 'document-text', Pagos: 'cash', Servicios: 'water', Mantenimiento: 'construct' };
-      return <Ionicons name={map[route.name] || 'ellipse'} size={size} color={color} />;
-    },
+    tabBar: (props) => <ScrollableTabBar {...props} />,
     tabBarActiveTintColor: theme.colors.accent,
     tabBarInactiveTintColor: theme.colors.textMuted,
-    tabBar: (props) => <ScrollableTabBar {...props} />,
     headerRight: () => <HeaderRight />,
     headerStyle: { backgroundColor: theme.colors.card },
     headerTintColor: theme.colors.text,
@@ -97,13 +73,10 @@ export default function AppNavigator() {
   return (
     <NavigationContainer theme={navTheme}>
       <Tab.Navigator screenOptions={screenOptions}>
-        <Tab.Screen name="Dashboard" component={DashboardScreen} />
+        <Tab.Screen name="Inicio" component={DashboardScreen} options={{ headerTitle: '' }} />
         <Tab.Screen name="Propiedades" component={PropiedadesStack} options={{ headerShown: false }} />
-        {!esInquilino && <Tab.Screen name="Inquilinos" component={InquilinosScreen} />}
-        <Tab.Screen name="Contratos" component={ContratosStack} options={{ headerShown: false }} />
-        <Tab.Screen name="Pagos" component={PagosStack} options={{ headerShown: false }} />
-        <Tab.Screen name="Servicios" component={ServiciosStack} options={{ headerShown: false }} />
-        <Tab.Screen name="Mantenimiento" component={MantenimientoStack} options={{ headerShown: false }} />
+        {!esInquilino && <Tab.Screen name="Inquilinos" component={InquilinosScreen} options={{ headerTitle: '' }} />}
+        <Tab.Screen name="Más" component={MasStack} options={{ headerShown: false }} />
       </Tab.Navigator>
     </NavigationContainer>
   );
