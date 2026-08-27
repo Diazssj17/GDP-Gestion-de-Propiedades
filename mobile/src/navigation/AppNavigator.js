@@ -12,7 +12,6 @@ import AdminDashboardScreen from '../screens/AdminDashboardScreen';
 import PropiedadesScreen from '../screens/PropiedadesScreen';
 import UnidadesScreen from '../screens/UnidadesScreen';
 import InquilinosScreen from '../screens/InquilinosScreen';
-import MasMenuScreen from '../screens/MasMenuScreen';
 import ContratosScreen from '../screens/ContratosScreen';
 import NuevoContratoScreen from '../screens/NuevoContratoScreen';
 import PagosScreen from '../screens/PagosScreen';
@@ -87,24 +86,6 @@ function MantenimientoStack() {
     </Stack.Navigator>
   );
 }
-// Stack agrupado tras la pestana 'Mas' (para propietario/superadmin)
-function MasStack() {
-  const { theme } = useTheme();
-  return (
-    <Stack.Navigator>
-      <Stack.Screen name="Menu" component={MasMenuScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="Contratos" component={ContratosScreen} options={{ title: 'Contratos', ...cardHeader(theme) }} />
-      <Stack.Screen name="NuevoContrato" component={NuevoContratoScreen} options={{ title: 'Nuevo contrato', ...cardHeader(theme) }} />
-      <Stack.Screen name="Pagos" component={PagosScreen} options={{ title: 'Pagos', ...cardHeader(theme) }} />
-      <Stack.Screen name="NuevoPago" component={NuevoPagoScreen} options={{ title: 'Nuevo pago', ...cardHeader(theme) }} />
-      <Stack.Screen name="Servicios" component={ServiciosScreen} options={{ title: 'Servicios', ...cardHeader(theme) }} />
-      <Stack.Screen name="NuevoRecibo" component={NuevoReciboScreen} options={{ title: 'Nuevo recibo', ...cardHeader(theme) }} />
-      <Stack.Screen name="Mantenimiento" component={MantenimientoScreen} options={{ title: 'Mantenimiento', ...cardHeader(theme) }} />
-      <Stack.Screen name="NuevoMantenimiento" component={NuevoMantenimientoScreen} options={{ title: 'Nuevo ticket', ...cardHeader(theme) }} />
-    </Stack.Navigator>
-  );
-}
-
 export default function AppNavigator() {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -148,14 +129,17 @@ export default function AppNavigator() {
     );
   }
 
-  // Propietario
+  // Propietario: modulos como pestanas directas (sin agrupar)
   return (
     <NavigationContainer theme={navTheme}>
       <Tab.Navigator screenOptions={screenOptions}>
         <Tab.Screen name="Inicio" component={DashboardScreen} options={{ headerTitle: '' }} />
         <Tab.Screen name="Propiedades" component={PropiedadesStack} options={{ headerShown: false }} />
         <Tab.Screen name="Inquilinos" component={InquilinosScreen} options={{ headerTitle: '' }} />
-        <Tab.Screen name="Más" component={MasStack} options={{ headerShown: false }} />
+        <Tab.Screen name="Contratos" component={ContratosStack} options={{ headerShown: false }} />
+        <Tab.Screen name="Pagos" component={PagosStack} options={{ headerShown: false }} />
+        <Tab.Screen name="Servicios" component={ServiciosStack} options={{ headerShown: false }} />
+        <Tab.Screen name="Mantenimiento" component={MantenimientoStack} options={{ headerShown: false }} />
       </Tab.Navigator>
     </NavigationContainer>
   );
