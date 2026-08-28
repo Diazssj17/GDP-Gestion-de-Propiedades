@@ -91,14 +91,29 @@ export default function AppNavigator() {
   const rol = user?.rol;
   const navTheme = { ...(theme.dark ? DarkTheme : DefaultTheme), colors: { ...(theme.dark ? DarkTheme : DefaultTheme).colors, primary: theme.colors.accent, background: theme.colors.background, card: theme.colors.card, text: theme.colors.text, border: theme.colors.border } };
 
-  const screenOptions = ({ route }) => ({
-    tabBarActiveTintColor: theme.colors.accent,
-    tabBarInactiveTintColor: theme.colors.textMuted,
-    headerRight: () => <HeaderRight />,
-    headerStyle: { backgroundColor: theme.colors.card },
-    headerTintColor: theme.colors.text,
-    headerTitleStyle: { fontWeight: '700' },
-  });
+  const iconMap = {
+    Inicio: 'home',
+    Propiedades: 'business',
+    Inquilinos: 'people',
+    Contratos: 'document-text',
+    Pagos: 'cash',
+    Servicios: 'water',
+    Mantenimiento: 'construct',
+  };
+
+  const screenOptions = ({ route }) => {
+    return {
+      tabBarActiveTintColor: theme.colors.accent,
+      tabBarInactiveTintColor: theme.colors.textMuted,
+      tabBarIcon: ({ focused, color, size }) => (
+        <Ionicons name={iconMap[route.name] || 'ellipse'} size={24} color={color} />
+      ),
+      headerRight: () => <HeaderRight />,
+      headerStyle: { backgroundColor: theme.colors.card },
+      headerTintColor: theme.colors.text,
+      headerTitleStyle: { fontWeight: '700' },
+    };
+  };
 
   // Superadmin: enfocado en administracion
   if (rol === 'superadmin') {
