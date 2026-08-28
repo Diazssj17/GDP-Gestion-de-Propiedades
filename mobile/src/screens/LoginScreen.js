@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingVi
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 
-export default function LoginScreen() {
+export default function LoginScreen({ navigation }) {
   const { login } = useAuth();
   const { theme, isDark, toggle } = useTheme();
   const [email, setEmail] = useState('');
@@ -52,6 +52,15 @@ export default function LoginScreen() {
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Ingresar</Text>}
         </TouchableOpacity>
 
+        <View style={s.links}>
+          <TouchableOpacity onPress={() => navigation.navigate('Registro')}>
+            <Text style={[s.link, { color: c.accent }]}>Crear cuenta</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('Recuperar')}>
+            <Text style={[s.link, { color: c.textSecondary }]}>¿Olvidaste tu contraseña?</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={[s.hint, { backgroundColor: c.card, borderColor: c.border }]}>
           <Text style={[s.hintTitle, { color: c.text }]}>Credenciales de prueba</Text>
           <Text style={[s.hintText, { color: c.textSecondary }]}>admin@gdp.com / admin123 (superadmin)</Text>
@@ -77,4 +86,6 @@ const s = StyleSheet.create({
   hint: { borderRadius: 10, borderWidth: 1, padding: 12, marginTop: 20 },
   hintTitle: { fontWeight: '700', fontSize: 12, marginBottom: 4 },
   hintText: { fontSize: 11, lineHeight: 18 },
+  links: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 },
+  link: { fontSize: 13, fontWeight: '600' },
 });

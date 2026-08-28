@@ -494,6 +494,18 @@ def crear_tablas():
         )
     """)
 
+    # --- 22) Recuperacion de contrasena ---
+    conexion.execute("""
+        CREATE TABLE IF NOT EXISTS recuperaciones (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            token TEXT NOT NULL UNIQUE,
+            usado INTEGER NOT NULL DEFAULT 0,
+            fecha_creacion TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            fecha_expiracion TEXT NOT NULL
+        )
+    """)
+
     # Indices escalabilidad
     indices = [
         "CREATE INDEX IF NOT EXISTS idx_propiedades_propietario ON propiedades(propietario_id)",
@@ -523,6 +535,7 @@ def crear_tablas():
         "CREATE INDEX IF NOT EXISTS idx_tokens_token ON tokens(token)",
         "CREATE INDEX IF NOT EXISTS idx_tokens_usuario ON tokens(usuario_id)",
         "CREATE INDEX IF NOT EXISTS idx_logs_usuario ON logs(usuario_id)",
+        "CREATE INDEX IF NOT EXISTS idx_recuperaciones_token ON recuperaciones(token)",
     ]
     for sql in indices:
         conexion.execute(sql)
@@ -672,7 +685,7 @@ if __name__ == "__main__":
     crear_tablas()
     print(f"Base de datos GDP lista en: {DB_PATH}")
     con = get_db()
-    for tabla in ["roles","usuarios","planes","suscripciones","descuentos","propietarios","propiedades","unidades","inquilinos","contratos","pagos","servicios","recibos","distribucion_servicios","alertas","notificaciones","mantenimiento","mantenimientos","documentos","reportes_generados","logs","configuracion","tokens","login_intentos","politicas"]:
+    for tabla in ["roles","usuarios","planes","suscripciones","descuentos","propietarios","propiedades","unidades","inquilinos","contratos","pagos","servicios","recibos","distribucion_servicios","alertas","notificaciones","mantenimiento","mantenimientos","documentos","reportes_generados","logs","configuracion","tokens","login_intentos","politicas","recuperaciones"]:
         try:
             count = con.execute(f"SELECT COUNT(*) as c FROM {tabla}").fetchone()["c"]
             print(f"  {tabla}: {count}")

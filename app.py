@@ -271,6 +271,103 @@ def logout():
     _log_evento("logout")
     return jsonify({"ok": True})
 
+
+# --- Planes publicos (para registro) ---
+@app.route("/api/planes/publico")
+def planes_publico():
+    rows = query_all("SELECT id, nombre, descripcion, precio_mensual, max_propiedades, max_unidades, max_usuarios, almacenamiento_mb FROM planes WHERE activo=1 ORDER BY precio_mensual")
+    return jsonify([row_to_dict(r) for r in rows])
+
+
+# --- Registro publico (elige plan) ---
+@app.route("/api/register", methods=["POST"])
+def register():
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get("nombre") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    plan_id = data.get("plan_id")
+    if not nombre or not email or not password or not plan_id:
+        return jsonify({"error": "nombre, email, password y plan_id requeridos"}), 400
+    err = _validar_password(password)
+    if err:
+        return jsonify({"error": err}), 400
+    if query_one("SELECT id FROM usuarios WHERE lower(email)=?", (email,)):
+        return jsonify({"error": "Ya existe un usuario con ese email"}), 409
+    plan = query_one("SELECT id FROM planes WHERE id=? AND activo=1", (plan_id,))
+    if not plan:
+        return jsonify({"error": "Plan no existe"}), 400
+
+    cur_user = g.db.execute(
+        "INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES (?,?,?,?)",
+        (nombre, email, _hash_password(password), "propietario"),
+    )
+    uid = cur_user.lastrowid
+    g.db.execute("""
+        INSERT INTO propietarios (usuario_id, tipo, documento, direccion, ciudad)
+        VALUES (?,?,?,?,?)
+    """, (uid, data.get("tipo", "persona"), data.get("documento", ""), data.get("direccion", ""), data.get("ciudad", "")))
+    g.db.execute("INSERT INTO suscripciones (usuario_id, plan_id, estado) VALUES (?,?,?)", (uid, plan_id, "activa"))
+
+    # Genera sesion automatica
+    token = secrets.token_hex(32)
+    ttl = int(_politica("token_ttl_dias", str(TOKEN_TTL_DAYS)))
+    expiracion = (datetime.now() + timedelta(days=ttl)).isoformat() if ttl else None
+    g.db.execute("INSERT INTO tokens (usuario_id, token, dispositivo, fecha_expiracion) VALUES (?,?,?,?)",
+                 (uid, token, data.get("dispositivo", ""), expiracion))
+    g.db.commit()
+    _log_evento("registro", entidad_tipo="propietario", entidad_id=uid, detalles=f"email={email} plan_id={plan_id}", usuario_id=uid)
+    return jsonify({"token": token, "usuario": {"id": uid, "nombre": nombre, "email": email, "rol": "propietario"}}), 201
+
+
+# --- Recuperacion de contrasena ---
+@app.route("/api/recuperar", methods=["POST"])
+def recuperar():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email requerido"}), 400
+    user = query_one("SELECT id FROM usuarios WHERE lower(email)=?", (email,))
+    # No revelar si existe el email (seguridad)
+    if user:
+        token = secrets.token_urlsafe(24)
+        expiracion = (datetime.now() + timedelta(minutes=30)).isoformat()
+        g.db.execute("INSERT INTO recuperaciones (usuario_id, token, fecha_expiracion) VALUES (?,?,?)",
+                     (user["id"], token, expiracion))
+        g.db.commit()
+        _log_evento("recuperar_solicitado", detalles=f"email={email}", usuario_id=user["id"])
+        # En produccion se envia por correo (SMTP). En dev se devuelve el token para probar.
+        return jsonify({"ok": True, "mensaje": "Si el email existe, recibiras un enlace", "token_dev": token})
+    return jsonify({"ok": True, "mensaje": "Si el email existe, recibiras un enlace"})
+
+
+@app.route("/api/restablecer", methods=["POST"])
+def restablecer():
+    data = request.get_json(silent=True) or {}
+    token = (data.get("token") or "").strip()
+    password = data.get("password") or ""
+    if not token or not password:
+        return jsonify({"error": "token y password requeridos"}), 400
+    rec = query_one("SELECT * FROM recuperaciones WHERE token=?", (token,))
+    if not rec:
+        return jsonify({"error": "Token invalido"}), 400
+    if rec["usado"]:
+        return jsonify({"error": "Token ya usado"}), 400
+    try:
+        if datetime.fromisoformat(rec["fecha_expiracion"]) < datetime.now():
+            return jsonify({"error": "Token expirado"}), 400
+    except ValueError:
+        return jsonify({"error": "Token invalido"}), 400
+    err = _validar_password(password)
+    if err:
+        return jsonify({"error": err}), 400
+    g.db.execute("UPDATE usuarios SET password_hash=? WHERE id=?", (_hash_password(password), rec["usuario_id"]))
+    g.db.execute("UPDATE recuperaciones SET usado=1 WHERE id=?", (rec["id"],))
+    g.db.commit()
+    _log_evento("restablecer_password", entidad_tipo="usuario", entidad_id=rec["usuario_id"], usuario_id=rec["usuario_id"])
+    return jsonify({"ok": True, "mensaje": "Contrasena actualizada"})
+
+
 # --- Rutas basicas ---
 
 @app.route("/")

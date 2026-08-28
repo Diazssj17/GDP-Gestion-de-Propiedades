@@ -4,7 +4,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import AppNavigator from './src/navigation/AppNavigator';
-import LoginScreen from './src/screens/LoginScreen';
+import AuthStack from './src/navigation/AuthStack';
 
 function Root() {
   const { theme, isDark } = useTheme();
@@ -15,7 +15,7 @@ function Root() {
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      {user ? <AppNavigator /> : <LoginScreen />}
+      {user ? <AppNavigator /> : <AuthStack />}
     </>
   );
 }
