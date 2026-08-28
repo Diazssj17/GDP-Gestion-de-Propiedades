@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import Picker from '../components/Picker';
+import DateField from '../components/DateField';
 
 const TIPOS_DOC = [
   { id: 'contrato', nombre: 'Contrato' },
@@ -125,8 +126,8 @@ export default function NuevoContratoScreen({ navigation }) {
 
       <Text style={[s.section, { color: c.text }]}>Vigencia y canon</Text>
       <View style={s.row}>
-        <TextInput style={[s.input, s.half, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} placeholder="Fecha inicio (2026-01-01)" placeholderTextColor={c.placeholder} value={fechaInicio} onChangeText={setFechaInicio} />
-        <TextInput style={[s.input, s.half, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} placeholder="Fecha fin (2026-12-31)" placeholderTextColor={c.placeholder} value={fechaFin} onChangeText={setFechaFin} />
+        <View style={s.half}><DateField label="Fecha inicio" value={fechaInicio} onChange={setFechaInicio} /></View>
+        <View style={s.half}><DateField label="Fecha fin" value={fechaFin} onChange={setFechaFin} /></View>
       </View>
       <View style={s.row}>
         <TextInput style={[s.input, s.half, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} placeholder="Canon $" placeholderTextColor={c.placeholder} value={canon} onChangeText={setCanon} keyboardType="numeric" />

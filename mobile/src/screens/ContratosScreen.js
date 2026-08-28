@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { api, BASE_URL } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../auth/AuthContext';
+import DateField from '../components/DateField';
 
 const estadoColor = { activo: '#059669', pendiente: '#EA580C', vencido: '#DC2626', proximo_a_vencer: '#D97706', terminado: '#64748B', cancelado: '#64748B' };
 const TIPO_LABEL = { contrato: 'Contrato', cedula: 'Cédula', certificado_laboral: 'Certificado laboral', fiador: 'Fiador', otro: 'Otro' };
@@ -133,8 +134,7 @@ export default function ContratosScreen({ navigation }) {
           <View style={[s.modal, { backgroundColor: c.card }]}>
             <Text style={[s.modalTitle, { color: c.text }]}>Renovar contrato</Text>
             <Text style={[s.meta, { color: c.textSecondary }]}>{renovar?.unidad_codigo} → {renovar?.inquilino_nombre}</Text>
-            <Text style={[s.label, { color: c.textSecondary }]}>Nueva fecha de finalización</Text>
-            <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} value={nuevaFecha} onChangeText={setNuevaFecha} placeholder="2027-12-31" placeholderTextColor={c.placeholder} />
+            <DateField label="Nueva fecha de finalización" value={nuevaFecha} onChange={setNuevaFecha} />
             <Text style={[s.label, { color: c.textSecondary }]}>Nuevo canon $</Text>
             <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} value={nuevoCanon} onChangeText={setNuevoCanon} keyboardType="numeric" placeholder="900000" placeholderTextColor={c.placeholder} />
             <Text style={[s.hint, { color: c.textMuted }]}>La unidad sigue ocupada y el contrato continúa activo.</Text>

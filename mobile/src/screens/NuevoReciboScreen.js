@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
+import DateField from '../components/DateField';
 
 const METODOS = [
   { id: 'partes_iguales', label: 'Partes iguales' },
@@ -158,8 +159,7 @@ export default function NuevoReciboScreen({ navigation }) {
         </View>
       </View>
 
-      <Text style={[s.label, { color: c.textSecondary }]}>Fecha vencimiento</Text>
-      <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} value={fechaVenc} onChangeText={setFechaVenc} placeholder="2026-08-30" placeholderTextColor={c.placeholder} />
+      <DateField label="Fecha vencimiento" value={fechaVenc} onChange={setFechaVenc} />
 
       <View style={s.row2}>
         <View style={{ flex: 1 }}>

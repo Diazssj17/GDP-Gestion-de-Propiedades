@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Activi
 import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import Picker from '../components/Picker';
+import DateField from '../components/DateField';
 
 const CONCEPTOS = [
   { id: 'canon', nombre: 'Canon de arrendamiento' },
@@ -71,8 +72,7 @@ export default function NuevoPagoScreen({ navigation }) {
         </View>
       </View>
 
-      <Text style={[s.label, { color: c.textSecondary }]}>Fecha vencimiento</Text>
-      <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} value={fechaVenc} onChangeText={setFechaVenc} placeholder="2026-09-05" placeholderTextColor={c.placeholder} />
+      <DateField label="Fecha vencimiento" value={fechaVenc} onChange={setFechaVenc} />
 
       {error ? <Text style={s.error}>{error}</Text> : null}
       <TouchableOpacity style={[s.btn, { backgroundColor: c.primary }]} onPress={guardar} disabled={loading}>
