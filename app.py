@@ -15,6 +15,9 @@ import os
 import time
 import base64
 import re
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 
 from flask import Flask, jsonify, request, g
@@ -25,6 +28,14 @@ import sqlite3
 
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
+
+# --- Configuracion SMTP (variables de entorno; no guardar claves en el repo) ---
+SMTP_SERVER = os.environ.get("SMTP_SERVER", "")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USUARIO = os.environ.get("SMTP_USUARIO", "")
+SMTP_CLAVE = os.environ.get("SMTP_CLAVE", "")
+BASE_URL = os.environ.get("BASE_URL", "http://localhost:5001")
+SMTP_REMITENTE = os.environ.get("SMTP_REMITENTE", SMTP_USUARIO)
 
 # Duracion del token en dias (0 = no expira, se revoca con logout)
 TOKEN_TTL_DAYS = 30
@@ -99,6 +110,27 @@ def _validar_password(password):
     if not re.search(r"[A-Za-z]", password) or not re.search(r"[0-9]", password):
         return "La contrasena debe incluir letras y numeros"
     return None
+
+def _enviar_correo(destinatario, asunto, cuerpo_html):
+    """Envia correo via SMTP. Devuelve True si se envio, False si SMTP no esta configurado."""
+    if not (SMTP_SERVER and SMTP_USUARIO and SMTP_CLAVE):
+        return False
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = asunto
+        msg["From"] = SMTP_REMITENTE
+        msg["To"] = destinatario
+        msg.attach(MIMEText(cuerpo_html, "html", "utf-8"))
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(SMTP_USUARIO, SMTP_CLAVE)
+            server.sendmail(SMTP_REMITENTE, [destinatario], msg.as_string())
+        return True
+    except Exception as e:
+        # No exponer el error al usuario; se registra en logs
+        _log_evento("smtp_error", detalles=str(e)[:200])
+        return False
 
 def _hash_password(password):
     # scrypt (mas resistente a fuerza bruta que pbkdf2 por defecto)
@@ -336,9 +368,23 @@ def recuperar():
                      (user["id"], token, expiracion))
         g.db.commit()
         _log_evento("recuperar_solicitado", detalles=f"email={email}", usuario_id=user["id"])
-        # En produccion se envia por correo (SMTP). En dev se devuelve el token para probar.
-        return jsonify({"ok": True, "mensaje": "Si el email existe, recibiras un enlace", "token_dev": token})
-    return jsonify({"ok": True, "mensaje": "Si el email existe, recibiras un enlace"})
+
+        # Enviar correo (SMTP). Si no hay SMTP, devolver el token para pruebas locales.
+        enlace = f"{BASE_URL}/restablecer?token={token}"
+        cuerpo = f"""
+        <h2>Recuperación de contraseña — GDP</h2>
+        <p>Hola,</p>
+        <p>Recibimos una solicitud para restablecer tu contraseña. Usa el siguiente código en la app:</p>
+        <p style="font-size:20px;font-weight:bold;letter-spacing:2px;">{token}</p>
+        <p>O abre este enlace: <a href="{enlace}">{enlace}</a></p>
+        <p>Este código vence en 30 minutos. Si no solicitaste esto, ignora el mensaje.</p>
+        """
+        enviado = _enviar_correo(email, "Recuperación de contraseña — GDP", cuerpo)
+        if enviado:
+            return jsonify({"ok": True, "mensaje": "Te enviamos un correo con el código de recuperación"})
+        # SMTP no configurado o error: devolver token (solo para entorno de desarrollo)
+        return jsonify({"ok": True, "mensaje": "Correo no configurado. Usa este código (dev)", "token_dev": token})
+    return jsonify({"ok": True, "mensaje": "Si el email existe, recibirás un código"})
 
 
 @app.route("/api/restablecer", methods=["POST"])
