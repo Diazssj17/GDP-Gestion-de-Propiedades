@@ -1,6 +1,7 @@
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
+import { Ionicons } from '@expo/vector-icons';
 
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../auth/AuthContext';
@@ -99,6 +100,9 @@ export default function AppNavigator() {
     Pagos: 'cash',
     Servicios: 'water',
     Mantenimiento: 'construct',
+    Panel: 'speedometer',
+    Propietarios: 'people-circle',
+    Planes: 'pricetags',
   };
 
   const screenOptions = ({ route }) => {
