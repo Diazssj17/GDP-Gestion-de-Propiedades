@@ -97,10 +97,19 @@ def crear_tablas():
             estado TEXT NOT NULL DEFAULT 'activa' CHECK(estado IN ('activa','vencida','cancelada','trial','pendiente')),
             fecha_inicio TEXT NOT NULL DEFAULT (date('now')),
             fecha_fin TEXT,
+            fecha_proximo_cobro TEXT,
+            acepta_terminos INTEGER NOT NULL DEFAULT 0,
+            acepta_tratamiento INTEGER NOT NULL DEFAULT 0,
+            autoriza_debito INTEGER NOT NULL DEFAULT 0,
             fecha_creacion TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(usuario_id, plan_id, fecha_inicio)
         )
     """)
+    for col, tipo in [("fecha_proximo_cobro", "TEXT"), ("acepta_terminos", "INTEGER NOT NULL DEFAULT 0"),
+                      ("acepta_tratamiento", "INTEGER NOT NULL DEFAULT 0"), ("autoriza_debito", "INTEGER NOT NULL DEFAULT 0")]:
+        if not _tiene_columna(conexion, "suscripciones", col):
+            conexion.execute(f"ALTER TABLE suscripciones ADD COLUMN {col} {tipo}")
+            conexion.commit()
 
     # --- 3b) Descuentos / Promociones (separado del precio base del plan) ---
     conexion.execute("""
@@ -534,6 +543,18 @@ def crear_tablas():
         )
     """)
 
+    # --- 25) Documentos legales (terminos, privacidad, tratamiento de datos) ---
+    conexion.execute("""
+        CREATE TABLE IF NOT EXISTS documentos_legales (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clave TEXT NOT NULL UNIQUE,
+            titulo TEXT NOT NULL,
+            contenido TEXT NOT NULL DEFAULT '',
+            version TEXT DEFAULT '1.0',
+            fecha_actualizacion TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     # Indices escalabilidad
     indices = [
         "CREATE INDEX IF NOT EXISTS idx_propiedades_propietario ON propiedades(propietario_id)",
@@ -653,9 +674,24 @@ def sembrar_datos_iniciales(conexion):
             ("dias_alerta_pago", "3", "Dias antes de vencimiento de pago"),
             ("whatsapp_numero", "573156652423", "Numero de WhatsApp para organizar pagos"),
             ("wompi_link", "https://checkout.wompi.co/l/VPOS_jKycIe", "Link de pago de Wompi"),
+            ("tasa_mora_anual", "33.03", "Tasa de interes moratorio anual (%)"),
+            ("dia_limite_pago_default", "5", "Dia limite de pago por defecto"),
         ]:
             conexion.execute("INSERT INTO configuracion (clave, valor, descripcion) VALUES (?,?,?)", (clave, valor, desc))
         print("[OK] Configuracion base creada")
+
+    # Documentos legales (Ley 1581 de 2012, estatuto del consumidor, terminos SaaS)
+    leg_count = conexion.execute("SELECT COUNT(*) as c FROM documentos_legales").fetchone()["c"]
+    if leg_count == 0:
+        docs = [
+            ("terminos", "Términos y Condiciones", "Al usar GDP aceptas: (1) el servicio es de suscripción mensual; (2) los pagos se renuevan automáticamente cada mes hasta que canceles; (3) eres responsable de la información que registres; (4) podemos suspender el servicio por impago."),
+            ("privacidad", "Política de Privacidad", "Recopilamos nombre, email y datos de tu negocio para prestar el servicio. No compartimos tu información con terceros sin tu autorización, salvo obligación legal."),
+            ("tratamiento_datos", "Política de Tratamiento de Datos Personales (Ley 1581 de 2012)", "Autorizo el tratamiento de mis datos personales conforme a la Ley 1581 de 2012 y el Decreto 1377 de 2013, para la gestión de mi cuenta, facturación y envío de información relevante."),
+            ("debito_recurrente", "Autorización de Débito Recurrente", "Autorizo de forma expresa e irrevocable a GDP a debitar mensualmente de mi medio de pago el valor del plan seleccionado, hasta que solicite la cancelación de la suscripción."),
+        ]
+        for k, t, c in docs:
+            conexion.execute("INSERT INTO documentos_legales (clave, titulo, contenido) VALUES (?,?,?)", (k, t, c))
+        print("[OK] Documentos legales creados")
 
     # Politicas de seguridad (ISO 27001 A.9/A.10)
     poli_count = conexion.execute("SELECT COUNT(*) as c FROM politicas").fetchone()["c"]
@@ -717,7 +753,7 @@ if __name__ == "__main__":
     crear_tablas()
     print(f"Base de datos GDP lista en: {DB_PATH}")
     con = get_db()
-    for tabla in ["roles","usuarios","planes","suscripciones","descuentos","propietarios","propiedades","unidades","inquilinos","contratos","pagos","servicios","recibos","distribucion_servicios","alertas","notificaciones","mantenimiento","mantenimientos","documentos","reportes_generados","logs","configuracion","tokens","login_intentos","politicas","recuperaciones","transacciones","dispositivos"]:
+    for tabla in ["roles","usuarios","planes","suscripciones","descuentos","propietarios","propiedades","unidades","inquilinos","contratos","pagos","servicios","recibos","distribucion_servicios","alertas","notificaciones","mantenimiento","mantenimientos","documentos","reportes_generados","logs","configuracion","tokens","login_intentos","politicas","recuperaciones","transacciones","dispositivos","documentos_legales"]:
         try:
             count = con.execute(f"SELECT COUNT(*) as c FROM {tabla}").fetchone()["c"]
             print(f"  {tabla}: {count}")

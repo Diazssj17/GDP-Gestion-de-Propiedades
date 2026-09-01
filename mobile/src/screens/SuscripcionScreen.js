@@ -16,6 +16,7 @@ export default function SuscripcionScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [pagar, setPagar] = useState(null); // plan seleccionado para pagar
   const [metodo, setMetodo] = useState('pse');
+  const [autorizaDebito, setAutorizaDebito] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -34,6 +35,7 @@ export default function SuscripcionScreen({ navigation }) {
   const pagarPlan = async () => {
     setError('');
     if (!pagar) return;
+    if (!autorizaDebito) { setError('Debes autorizar el débito mensual recurrente'); return; }
     setGuardando(true);
     try {
       const cfg = await api.pagosConfig();
@@ -101,6 +103,10 @@ export default function SuscripcionScreen({ navigation }) {
               <Text style={{ color: metodo === 'whatsapp' ? '#fff' : c.textSecondary }}>WhatsApp</Text>
             </TouchableOpacity>
           </View>
+          <TouchableOpacity style={s.checkRow} onPress={() => setAutorizaDebito(v => !v)}>
+            <Ionicons name={autorizaDebito ? 'checkbox' : 'square-outline'} size={20} color={autorizaDebito ? c.accent : c.textMuted} />
+            <Text style={[s.checkText, { color: c.textSecondary }]}>Autorizo el débito mensual recurrente de mi plan</Text>
+          </TouchableOpacity>
           {msg ? <Text style={[s.msg, { color: c.success }]}>{msg}</Text> : null}
           {error ? <Text style={s.error}>{error}</Text> : null}
           <TouchableOpacity style={[s.btn, { backgroundColor: c.primary }]} onPress={pagarPlan} disabled={guardando}>
@@ -131,6 +137,8 @@ const s = StyleSheet.create({
   meta: { fontSize: 12, marginTop: 4 },
   methods: { flexDirection: 'row', gap: 8, marginTop: 12 },
   method: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16 },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
+  checkText: { fontSize: 12, flex: 1 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginTop: 12 },
   msg: { fontSize: 13, marginTop: 10 },
   error: { color: '#DC2626', fontSize: 13, marginTop: 8 },

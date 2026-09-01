@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../auth/AuthContext';
@@ -15,6 +16,9 @@ export default function RegisterScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [planId, setPlanId] = useState(null);
+  const [aceptaTerminos, setAceptaTerminos] = useState(false);
+  const [aceptaTratamiento, setAceptaTratamiento] = useState(false);
+  const [autorizaDebito, setAutorizaDebito] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -25,18 +29,24 @@ export default function RegisterScreen({ navigation }) {
   const registrar = async () => {
     setError('');
     if (!nombre || !email || !password || !planId) return setError('Completa todos los campos y elige un plan');
+    if (!aceptaTerminos || !aceptaTratamiento) return setError('Debes aceptar los Términos y la Política de Tratamiento de Datos');
+    if (!autorizaDebito) return setError('Debes autorizar el débito mensual recurrente');
     setLoading(true);
     try {
-      const res = await api.register({ nombre, email, password, plan_id: planId });
-      // auto-login
+      const res = await api.register({ nombre, email, password, plan_id: planId, acepta_terminos: true, acepta_tratamiento: true, autoriza_debito: true });
       const { token } = res;
-      if (token) {
-        await login(email, password);
-      }
+      if (token) await login(email, password);
     } catch (e) {
       setError(e?.response?.data?.error || 'Error al registrar');
     } finally { setLoading(false); }
   };
+
+  const Check = ({ value, onToggle, children }) => (
+    <TouchableOpacity style={s.checkRow} onPress={onToggle}>
+      <Ionicons name={value ? 'checkbox' : 'square-outline'} size={20} color={value ? c.accent : c.textMuted} />
+      <Text style={[s.checkText, { color: c.textSecondary }]}>{children}</Text>
+    </TouchableOpacity>
+  );
 
   return (
     <ScrollView style={[s.container, { backgroundColor: c.background }]} contentContainerStyle={{ paddingBottom: 40 }}>
@@ -59,6 +69,11 @@ export default function RegisterScreen({ navigation }) {
         </TouchableOpacity>
       ))}
 
+      <Text style={[s.section, { color: c.text }]}>Consentimientos</Text>
+      <Check value={aceptaTerminos} onToggle={() => setAceptaTerminos(v => !v)}>Acepto los Términos y Condiciones</Check>
+      <Check value={aceptaTratamiento} onToggle={() => setAceptaTratamiento(v => !v)}>Acepto la Política de Tratamiento de Datos (Ley 1581)</Check>
+      <Check value={autorizaDebito} onToggle={() => setAutorizaDebito(v => !v)}>Autorizo el débito mensual recurrente de mi plan</Check>
+
       {error ? <Text style={s.error}>{error}</Text> : null}
       <TouchableOpacity style={[s.btn, { backgroundColor: c.primary }]} onPress={registrar} disabled={loading}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Registrarme</Text>}
@@ -80,6 +95,8 @@ const s = StyleSheet.create({
   planDesc: { fontSize: 12, marginTop: 2 },
   planLimits: { fontSize: 11, marginTop: 2 },
   planPrice: { fontWeight: '800', fontSize: 15, marginLeft: 8 },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  checkText: { fontSize: 12, flex: 1 },
   error: { color: '#DC2626', fontSize: 13, marginTop: 6, textAlign: 'center' },
   btn: { borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 16 },

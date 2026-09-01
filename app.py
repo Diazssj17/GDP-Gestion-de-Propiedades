@@ -368,6 +368,13 @@ def whatsapp_numero():
     return jsonify({"numero": num})
 
 
+# --- Documentos legales ---
+@app.route("/api/legal")
+def documentos_legales():
+    rows = query_all("SELECT clave, titulo, contenido, version, fecha_actualizacion FROM documentos_legales ORDER BY id")
+    return jsonify([row_to_dict(r) for r in rows])
+
+
 # --- Configuracion de pagos (whatsapp + link wompi) ---
 @app.route("/api/pagos/config")
 def pagos_config():
@@ -397,6 +404,13 @@ def register():
     plan = query_one("SELECT id FROM planes WHERE id=? AND activo=1", (plan_id,))
     if not plan:
         return jsonify({"error": "Plan no existe"}), 400
+    # Consentimientos legales obligatorios
+    if not data.get("acepta_terminos"):
+        return jsonify({"error": "Debes aceptar los Términos y Condiciones"}), 400
+    if not data.get("acepta_tratamiento"):
+        return jsonify({"error": "Debes aceptar la Política de Tratamiento de Datos (Ley 1581)"}), 400
+    if not data.get("autoriza_debito"):
+        return jsonify({"error": "Debes autorizar el débito mensual recurrente"}), 400
 
     cur_user = g.db.execute(
         "INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES (?,?,?,?)",
@@ -407,7 +421,11 @@ def register():
         INSERT INTO propietarios (usuario_id, tipo, documento, direccion, ciudad)
         VALUES (?,?,?,?,?)
     """, (uid, data.get("tipo", "persona"), data.get("documento", ""), data.get("direccion", ""), data.get("ciudad", "")))
-    g.db.execute("INSERT INTO suscripciones (usuario_id, plan_id, estado) VALUES (?,?,?)", (uid, plan_id, "activa"))
+    proximo_cobro = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
+    g.db.execute("""
+        INSERT INTO suscripciones (usuario_id, plan_id, estado, acepta_terminos, acepta_tratamiento, autoriza_debito, fecha_proximo_cobro)
+        VALUES (?,?,?,?,?,?,?)
+    """, (uid, plan_id, "activa", 1, 1, 1, proximo_cobro))
 
     # Genera sesion automatica
     token = secrets.token_hex(32)
@@ -495,9 +513,11 @@ def _confirmar_pago(referencia, wompi_id=""):
     if not tr or tr["estado"] == "aprobada":
         return False
     g.db.execute("UPDATE transacciones SET estado='aprobada', wompi_id=? WHERE referencia=?", (wompi_id or tr["wompi_id"], referencia))
-    # Activar la suscripcion
+    # Activar la suscripcion y fijar proximo cobro mensual (+30 dias)
+    proximo = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
     g.db.execute("UPDATE suscripciones SET estado='cancelada' WHERE usuario_id=? AND estado='activa'", (tr["usuario_id"],))
-    g.db.execute("UPDATE suscripciones SET estado='activa' WHERE usuario_id=? AND plan_id=? AND estado='pendiente'", (tr["usuario_id"], tr["plan_id"]))
+    g.db.execute("UPDATE suscripciones SET estado='activa', fecha_proximo_cobro=? WHERE usuario_id=? AND plan_id=? AND estado='pendiente'",
+                 (proximo, tr["usuario_id"], tr["plan_id"]))
     g.db.commit()
     _log_evento("pago_aprobado", entidad_tipo="transaccion", entidad_id=tr["id"], detalles=f"ref={referencia} plan={tr['plan_id']}", usuario_id=tr["usuario_id"])
     return True
@@ -1303,6 +1323,16 @@ def generar_alertas():
         """, (iid,)):
             _crear_alerta(uid, "mora", "Tienes un pago en mora",
                           f"El pago {pg['periodo'] or pg['id']} está en mora.", "pago", pg["id"])
+
+    # --- Renovacion mensual de planes (aviso de proximo cobro) ---
+    for s in query_all("""
+        SELECT s.usuario_id, s.fecha_proximo_cobro, pl.nombre FROM suscripciones s
+        JOIN planes pl ON pl.id = s.plan_id
+        WHERE s.estado = 'activa' AND s.fecha_proximo_cobro IS NOT NULL
+          AND s.fecha_proximo_cobro <= date('now','+7 day')
+    """):
+        _crear_alerta(s["usuario_id"], "sistema", "Próximo cobro de tu plan",
+                      f"Tu plan {s['nombre']} se cobrará el {s['fecha_proximo_cobro']}.", "suscripcion", s["usuario_id"])
 
 
 @app.route("/api/alertas")
