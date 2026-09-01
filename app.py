@@ -762,10 +762,16 @@ def cancelar_suscripcion():
     user = require_auth()
     if not user:
         return jsonify({"error": "No autenticado"}), 401
-    g.db.execute("UPDATE suscripciones SET estado='cancelada' WHERE usuario_id=? AND estado='activa'", (user["id"],))
+    # Cancelar suscripcion activa/pendiente y desactivar tarjeta
+    g.db.execute("UPDATE suscripciones SET estado='cancelada' WHERE usuario_id=? AND estado IN ('activa','pendiente')", (user["id"],))
     g.db.execute("UPDATE tarjetas SET activo=0 WHERE usuario_id=?", (user["id"],))
+    # Bajar al plan Gratis
+    gratis = query_one("SELECT id FROM planes WHERE nombre='Gratis' AND activo=1")
+    if gratis:
+        g.db.execute("INSERT INTO suscripciones (usuario_id, plan_id, estado, fecha_inicio) VALUES (?,?,?,?)",
+                     (user["id"], gratis["id"], "activa", datetime.now().isoformat()))
     g.db.commit()
-    _log_evento("cancelar_suscripcion", usuario_id=user["id"])
+    _log_evento("cancelar_suscripcion", detalles="baja a plan Gratis", usuario_id=user["id"])
     return jsonify({"ok": True})
 
 
