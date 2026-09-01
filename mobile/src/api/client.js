@@ -27,6 +27,8 @@ export const api = {
   planesPublico: () => client.get('/api/planes/publico').then(r => r.data),
   recuperar: (email) => client.post('/api/recuperar', { email }).then(r => r.data),
   restablecer: (token, password) => client.post('/api/restablecer', { token, password }).then(r => r.data),
+  pagarPlan: (data) => client.post('/api/pagos/plan', data).then(r => r.data),
+  estadoPago: (ref) => client.get(`/api/pagos/plan/${ref}`).then(r => r.data),
   logout: () => client.post('/api/logout').then(r => r.data),
   resumen: () => client.get('/api/reportes/resumen').then(r => r.data),
   adminResumen: () => client.get('/api/admin/resumen').then(r => r.data),

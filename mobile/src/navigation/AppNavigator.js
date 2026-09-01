@@ -23,6 +23,7 @@ import NuevoMantenimientoScreen from '../screens/NuevoMantenimientoScreen';
 import PropietariosScreen from '../screens/PropietariosScreen';
 import PropietarioAnalisisScreen from '../screens/PropietarioAnalisisScreen';
 import PlanesScreen from '../screens/PlanesScreen';
+import SuscripcionScreen from '../screens/SuscripcionScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -100,6 +101,7 @@ export default function AppNavigator() {
     Pagos: 'cash',
     Servicios: 'water',
     Mantenimiento: 'construct',
+    Plan: 'card',
     Panel: 'speedometer',
     Propietarios: 'people-circle',
     Planes: 'pricetags',
@@ -157,6 +159,7 @@ export default function AppNavigator() {
         <Tab.Screen name="Pagos" component={PagosStack} options={{ headerShown: false }} />
         <Tab.Screen name="Servicios" component={ServiciosStack} options={{ headerShown: false }} />
         <Tab.Screen name="Mantenimiento" component={MantenimientoStack} options={{ headerShown: false }} />
+        <Tab.Screen name="Plan" component={SuscripcionScreen} options={{ headerTitle: '' }} />
       </Tab.Navigator>
     </NavigationContainer>
   );

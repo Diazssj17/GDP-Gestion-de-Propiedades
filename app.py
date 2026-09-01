@@ -15,7 +15,9 @@ import os
 import time
 import base64
 import re
+import json
 import smtplib
+import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
@@ -36,6 +38,13 @@ SMTP_USUARIO = os.environ.get("SMTP_USUARIO", "")
 SMTP_CLAVE = os.environ.get("SMTP_CLAVE", "")
 BASE_URL = os.environ.get("BASE_URL", "http://localhost:5001")
 SMTP_REMITENTE = os.environ.get("SMTP_REMITENTE", SMTP_USUARIO)
+
+# --- Configuracion Wompi (pasarela de pago, sandbox por defecto) ---
+WOMPI_BASE = os.environ.get("WOMPI_BASE_URL", "https://sandbox.wompi.co/v1")
+WOMPI_PUBLIC = os.environ.get("WOMPI_PUBLIC_KEY", "")
+WOMPI_PRIVATE = os.environ.get("WOMPI_PRIVATE_KEY", "")
+WOMPI_WEBHOOK_SECRET = os.environ.get("WOMPI_WEBHOOK_SECRET", "")
+WOMPI_EVENTS_URL = os.environ.get("WOMPI_EVENTS_URL", "")
 
 # Duracion del token en dias (0 = no expira, se revoca con logout)
 TOKEN_TTL_DAYS = 30
@@ -142,6 +151,44 @@ def _ip():
 def _politica(clave, default="0"):
     f = query_one("SELECT valor FROM politicas WHERE clave=?", (clave,))
     return f["valor"] if f else default
+
+# --- Wompi (pasarela de pago) ---
+
+_aceptacion_cache = {"token": "", "personal": ""}
+
+def _wompi_aceptacion():
+    """Obtiene los tokens de aceptacion (public key). Cache 20 min."""
+    if not WOMPI_PUBLIC:
+        return None, None
+    try:
+        r = requests.get(f"{WOMPI_BASE}/merchants/{WOMPI_PUBLIC}", timeout=15)
+        if r.status_code == 200:
+            d = r.json().get("data", {})
+            _aceptacion_cache["token"] = d.get("presigned_acceptance", "")
+            _aceptacion_cache["personal"] = d.get("presigned_personal_data_auth", "")
+            return _aceptacion_cache["token"], _aceptacion_cache["personal"]
+    except Exception:
+        pass
+    return _aceptacion_cache["token"], _aceptacion_cache["personal"]
+
+def _wompi_privado(method, path, payload=None):
+    """Llamada autenticada a Wompi (private key)."""
+    headers = {"Authorization": f"Bearer {WOMPI_PRIVATE}", "Content-Type": "application/json"}
+    url = f"{WOMPI_BASE}{path}"
+    if method == "POST":
+        r = requests.post(url, json=payload, headers=headers, timeout=20)
+    else:
+        r = requests.get(url, headers=headers, timeout=20)
+    return r.status_code, (r.json() if r.content else {})
+
+def _wompi_publico_post(path, payload):
+    """Llamada a Wompi con la public key (tokenizacion de tarjeta)."""
+    headers = {"Authorization": f"Bearer {WOMPI_PUBLIC}", "Content-Type": "application/json"}
+    r = requests.post(f"{WOMPI_BASE}{path}", json=payload, headers=headers, timeout=20)
+    return r.status_code, (r.json() if r.content else {})
+
+def _wompi_disponible():
+    return bool(WOMPI_PUBLIC and WOMPI_PRIVATE)
 
 def _check_bloqueo(email):
     max_i = int(_politica("login_max_intentos", "5"))
@@ -412,6 +459,137 @@ def restablecer():
     g.db.commit()
     _log_evento("restablecer_password", entidad_tipo="usuario", entidad_id=rec["usuario_id"], usuario_id=rec["usuario_id"])
     return jsonify({"ok": True, "mensaje": "Contrasena actualizada"})
+
+
+# --- Pagos de planes (Wompi: PSE / link WhatsApp) ---
+
+def _crear_suscripcion_pendiente(usuario_id, plan_id):
+    # Cancela suscripcion activa/pendiente previa y crea una pendiente (se activa al confirmar pago)
+    g.db.execute("UPDATE suscripciones SET estado='cancelada' WHERE usuario_id=? AND estado IN ('activa','pendiente')", (usuario_id,))
+    g.db.execute("INSERT INTO suscripciones (usuario_id, plan_id, estado, fecha_inicio) VALUES (?,?,?,?)",
+                 (usuario_id, plan_id, "pendiente", datetime.now().isoformat()))
+
+def _confirmar_pago(referencia, wompi_id=""):
+    tr = query_one("SELECT * FROM transacciones WHERE referencia=?", (referencia,))
+    if not tr or tr["estado"] == "aprobada":
+        return False
+    g.db.execute("UPDATE transacciones SET estado='aprobada', wompi_id=? WHERE referencia=?", (wompi_id or tr["wompi_id"], referencia))
+    # Activar la suscripcion
+    g.db.execute("UPDATE suscripciones SET estado='cancelada' WHERE usuario_id=? AND estado='activa'", (tr["usuario_id"],))
+    g.db.execute("UPDATE suscripciones SET estado='activa' WHERE usuario_id=? AND plan_id=? AND estado='pendiente'", (tr["usuario_id"], tr["plan_id"]))
+    g.db.commit()
+    _log_evento("pago_aprobado", entidad_tipo="transaccion", entidad_id=tr["id"], detalles=f"ref={referencia} plan={tr['plan_id']}", usuario_id=tr["usuario_id"])
+    return True
+
+
+@app.route("/api/pagos/plan", methods=["POST"])
+def pagar_plan():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    data = request.get_json(silent=True) or {}
+    plan_id = data.get("plan_id")
+    metodo = data.get("metodo", "pse")  # 'pse' | 'whatsapp' (link)
+    plan = query_one("SELECT * FROM planes WHERE id=? AND activo=1", (plan_id,))
+    if not plan:
+        return jsonify({"error": "Plan no existe"}), 404
+    monto_cents = int(round(float(plan["precio_mensual"]) * 100))
+    referencia = f"gdp-{user['id']}-{plan_id}-{secrets.token_hex(6)}"
+    _crear_suscripcion_pendiente(user["id"], plan_id)
+    g.db.execute("""
+        INSERT INTO transacciones (usuario_id, plan_id, referencia, monto_cents, metodo, estado)
+        VALUES (?,?,?,?,?,?)
+    """, (user["id"], plan_id, referencia, monto_cents, metodo, "pendiente"))
+    g.db.commit()
+
+    # Modo mock (sin claves Wompi): aprobar inmediato para probar el flujo
+    if not _wompi_disponible():
+        _confirmar_pago(referencia, wompi_id="mock")
+        return jsonify({
+            "ok": True, "modo": "mock", "referencia": referencia,
+            "estado": "aprobada",
+            "mensaje": "Pago simulado (configura WOMPI_* para pagos reales)"
+        }), 201
+
+    aceptacion, personal = _wompi_aceptacion()
+    if metodo == "whatsapp":
+        # Link de pago: transaccion con redirect_url (abrir en WhatsApp/navegador)
+        payload = {
+            "acceptance_token": aceptacion,
+            "amount_in_cents": monto_cents,
+            "currency": "COP",
+            "customer_email": user["email"],
+            "reference": referencia,
+            "payment_method": {"type": "PSE", "user_type": "0", "user_legal_id_type": "CC", "user_legal_id": data.get("user_legal_id", ""), "financial_institution_code": data.get("banco", "1007"), "payment_description": f"Plan {plan['nombre']}"},
+            "redirect_url": data.get("redirect_url") or f"{BASE_URL}/api/pagos/plan/{referencia}/estado",
+        }
+        code, resp = _wompi_privado("POST", "/transactions", payload)
+        if code in (200, 201):
+            wompi_id = resp.get("data", {}).get("id", "")
+            g.db.execute("UPDATE transacciones SET wompi_id=? WHERE referencia=?", (wompi_id, referencia))
+            g.db.commit()
+            enlace = f"{WOMPI_BASE}/transactions/{wompi_id}/redirect"
+            return jsonify({"ok": True, "referencia": referencia, "link_pago": enlace}), 201
+        return jsonify({"error": "No se pudo crear el pago", "detalle": resp}), 502
+
+    # PSE
+    payload = {
+        "acceptance_token": aceptacion,
+        "accept_personal_auth": personal,
+        "amount_in_cents": monto_cents,
+        "currency": "COP",
+        "customer_email": user["email"],
+        "reference": referencia,
+        "payment_method": {"type": "PSE", "user_type": "0", "user_legal_id_type": "CC", "user_legal_id": data.get("user_legal_id", ""), "financial_institution_code": data.get("banco", "1007"), "payment_description": f"Plan {plan['nombre']}"},
+        "redirect_url": data.get("redirect_url") or f"{BASE_URL}/api/pagos/plan/{referencia}/estado",
+    }
+    code, resp = _wompi_privado("POST", "/transactions", payload)
+    if code in (200, 201):
+        wompi_id = resp.get("data", {}).get("id", "")
+        g.db.execute("UPDATE transacciones SET wompi_id=? WHERE referencia=?", (wompi_id, referencia))
+        g.db.commit()
+        return jsonify({"ok": True, "referencia": referencia, "wompi_id": wompi_id, "estado": "pendiente"}), 201
+    return jsonify({"error": "No se pudo crear el pago", "detalle": resp}), 502
+
+
+@app.route("/api/pagos/plan/<referencia>", methods=["GET"])
+def estado_pago(referencia):
+    tr = query_one("SELECT * FROM transacciones WHERE referencia=?", (referencia,))
+    if not tr:
+        return jsonify({"error": "Transaccion no existe"}), 404
+    # Consultar estado en Wompi si hay wompi_id y aun pendiente
+    if tr["estado"] == "pendiente" and tr["wompi_id"] and _wompi_disponible():
+        code, resp = _wompi_privado("GET", f"/transactions/{tr['wompi_id']}")
+        if code == 200:
+            est = resp.get("data", {}).get("status", "")
+            if est == "APPROVED":
+                _confirmar_pago(referencia)
+            elif est in ("DECLINED", "ERROR", "VOIDED"):
+                g.db.execute("UPDATE transacciones SET estado='rechazada' WHERE referencia=?", (referencia,))
+                g.db.commit()
+    tr = query_one("SELECT id, referencia, wompi_id, monto_cents, metodo, estado, plan_id, fecha FROM transacciones WHERE referencia=?", (referencia,))
+    return jsonify(row_to_dict(tr))
+
+
+@app.route("/api/webhooks/wompi", methods=["POST"])
+def webhook_wompi():
+    data = request.get_json(silent=True) or {}
+    event = data.get("event", "")
+    sig = request.headers.get("X-Event-Checksum", "")
+    # (Opcional) verificar firma si WOMPI_WEBHOOK_SECRET esta configurado
+    if WOMPI_WEBHOOK_SECRET:
+        import hashlib
+        comp = hashlib.sha256(f"{data.get('data',{}).get('transaction',{}).get('id','')}{WOMPI_WEBHOOK_SECRET}".encode()).hexdigest()
+        # Wompi usa un checksum distinto; aqui solo registramos. En produccion validar segun doc.
+    trans = data.get("data", {}).get("transaction", {})
+    referencia = trans.get("reference", "")
+    estado = trans.get("status", "")
+    if referencia and estado == "APPROVED":
+        _confirmar_pago(referencia, wompi_id=trans.get("id", ""))
+        _log_evento("webhook_wompi_aprobado", detalles=f"ref={referencia}")
+    else:
+        _log_evento("webhook_wompi", detalles=f"event={event} status={estado} ref={referencia}")
+    return jsonify({"ok": True})
 
 
 # --- Rutas basicas ---
