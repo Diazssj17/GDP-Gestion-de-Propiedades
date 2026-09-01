@@ -358,6 +358,16 @@ def planes_publico():
     return jsonify([row_to_dict(r) for r in rows])
 
 
+# --- Numero de WhatsApp para organizar pagos ---
+@app.route("/api/whatsapp")
+def whatsapp_numero():
+    num = os.environ.get("WHATSAPP_NUMERO", "")
+    if not num:
+        f = query_one("SELECT valor FROM configuracion WHERE clave='whatsapp_numero'")
+        num = f["valor"] if f else ""
+    return jsonify({"numero": num})
+
+
 # --- Registro publico (elige plan) ---
 @app.route("/api/register", methods=["POST"])
 def register():

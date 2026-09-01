@@ -37,11 +37,26 @@ export default function SuscripcionScreen({ navigation }) {
     if (!pagar) return;
     setGuardando(true);
     try {
-      const res = await api.pagarPlan({ plan_id: pagar.id, metodo, user_legal_id: documento });
+      // WhatsApp: abrir chat para organizar el pago (no es pago en linea)
+      if (metodo === 'whatsapp') {
+        const wa = await api.whatsapp();
+        const numero = (wa.numero || '').replace(/\D/g, '');
+        if (!numero) {
+          setError('No hay número de WhatsApp configurado. Usa PSE o contacta soporte.');
+          setGuardando(false);
+          return;
+        }
+        const texto = encodeURIComponent(`Hola, soy ${user?.nombre || 'un cliente'}. Quiero organizar el pago del plan ${pagar.nombre} (${fmt(pagar.precio_mensual)}/mes).`);
+        Linking.openURL(`https://wa.me/${numero}?text=${texto}`);
+        setMsg('Se abrió WhatsApp para organizar tu pago.');
+        setGuardando(false);
+        return;
+      }
+      // PSE: pagar en linea via Wompi
+      const res = await api.pagarPlan({ plan_id: pagar.id, metodo: 'pse', user_legal_id: documento });
       if (res.link_pago) {
-        // PSE/WhatsApp: abrir link de pago
         Linking.openURL(res.link_pago);
-        setMsg('Abre el enlace para completar el pago. Volverá a consultar el estado al regresar.');
+        setMsg('Abre el enlace para completar el pago.');
       } else {
         setMsg(res.mensaje || 'Pago procesado');
         setPagar(null);
