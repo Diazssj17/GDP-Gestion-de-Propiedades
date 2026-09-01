@@ -17,3 +17,29 @@ services:
         sync: false
       - key: BASE_URL
         sync: false
+      - key: WOMPI_PUBLIC_KEY
+        sync: false
+      - key: WOMPI_PRIVATE_KEY
+        sync: false
+      - key: WOMPI_BASE_URL
+        value: https://production.wompi.co/v1
+      - key: WOMPI_WEBHOOK_SECRET
+        sync: false
+      - key: WHATSAPP_NUMERO
+        value: "573156652423"
+
+  - type: cron
+    name: cobro-recurrente-diario
+    runtime: python
+    schedule: "0 5 * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python cobros_diarios.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: WOMPI_PUBLIC_KEY
+        sync: false
+      - key: WOMPI_PRIVATE_KEY
+        sync: false
+      - key: WOMPI_BASE_URL
+        value: https://production.wompi.co/v1
