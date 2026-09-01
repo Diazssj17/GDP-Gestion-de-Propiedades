@@ -73,9 +73,9 @@ export default function SuscripcionScreen({ navigation }) {
   };
 
   const cancelar = () => {
-    Alert.alert('Cancelar suscripción', '¿Deseas cancelar tu suscripción? Se desactivará el cobro recurrente.', [
-      { text: 'No', style: 'cancel' },
-      { text: 'Sí, cancelar', style: 'destructive', onPress: async () => { try { await api.cancelarSuscripcion(); load(); } catch {} } },
+    Alert.alert('Cancelar suscripción', 'Se desactivará el cobro mensual y tu tarjeta. Podrás volver a suscribirte cuando quieras.', [
+      { text: 'Volver', style: 'cancel' },
+      { text: 'Sí, cancelar', style: 'destructive', onPress: async () => { try { await api.cancelarSuscripcion(); setMsg('Suscripción cancelada.'); load(); } catch { setError('No se pudo cancelar'); } } },
     ]);
   };
 
@@ -92,8 +92,9 @@ export default function SuscripcionScreen({ navigation }) {
           {miTarjeta ? (
             <Text style={[s.curCard, { color: c.textSecondary }]}>💳 {miTarjeta.marca} •••• {miTarjeta.ultimos4} · {miTarjeta.exp_mes}/{miTarjeta.exp_anio}</Text>
           ) : <Text style={[s.curCard, { color: c.textMuted }]}>Sin tarjeta guardada</Text>}
-          <TouchableOpacity style={[s.cancelBtn, { borderColor: c.danger }]} onPress={cancelar}>
-            <Text style={{ color: c.danger, fontWeight: '600' }}>Cancelar suscripción</Text>
+          <TouchableOpacity style={[s.cancelBtn, { backgroundColor: c.danger }]} onPress={cancelar}>
+            <Ionicons name="close-circle" size={16} color="#fff" />
+            <Text style={s.cancelText}>Cancelar mi suscripción</Text>
           </TouchableOpacity>
         </View>
       ) : <Text style={[s.empty, { color: c.textMuted }]}>No tienes un plan activo</Text>}
@@ -164,7 +165,8 @@ const s = StyleSheet.create({
   curPrice: { fontWeight: '800', fontSize: 15, marginTop: 4 },
   curLimits: { fontSize: 12, marginTop: 4 },
   curCard: { fontSize: 12, marginTop: 8 },
-  cancelBtn: { borderWidth: 1, borderRadius: 8, paddingVertical: 8, alignItems: 'center', marginTop: 12 },
+  cancelBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 8, paddingVertical: 10, marginTop: 12 },
+  cancelText: { color: '#fff', fontWeight: '700' },
   section: { fontSize: 16, fontWeight: '800', marginTop: 20, marginBottom: 10 },
   empty: { fontSize: 13, marginTop: 12 },
   plan: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 10 },
