@@ -106,7 +106,8 @@ def crear_tablas():
         )
     """)
     for col, tipo in [("fecha_proximo_cobro", "TEXT"), ("acepta_terminos", "INTEGER NOT NULL DEFAULT 0"),
-                      ("acepta_tratamiento", "INTEGER NOT NULL DEFAULT 0"), ("autoriza_debito", "INTEGER NOT NULL DEFAULT 0")]:
+                      ("acepta_tratamiento", "INTEGER NOT NULL DEFAULT 0"), ("autoriza_debito", "INTEGER NOT NULL DEFAULT 0"),
+                      ("intentos_fallo", "INTEGER NOT NULL DEFAULT 0"), ("bloqueada", "INTEGER NOT NULL DEFAULT 0")]:
         if not _tiene_columna(conexion, "suscripciones", col):
             conexion.execute(f"ALTER TABLE suscripciones ADD COLUMN {col} {tipo}")
             conexion.commit()

@@ -2,11 +2,12 @@ import { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import client, { api } from '../api/client';
 
-const AuthContext = createContext({ user: null, token: null, loading: true, login: () => {}, logout: () => {} });
+const AuthContext = createContext({ user: null, token: null, plan: null, loading: true, login: () => {}, logout: () => {} });
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
+  const [plan, setPlan] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -16,10 +17,9 @@ export function AuthProvider({ children }) {
         if (tok) {
           setToken(tok);
           const res = await api.me();
-          if (res.usuario) setUser(res.usuario);
+          if (res.usuario) { setUser(res.usuario); setPlan(res.plan || null); }
         }
       } catch (e) {
-        // token invalido o backend caido: limpiar sesion
         await SecureStore.deleteItemAsync('gdp_token');
         setToken(null);
         setUser(null);
@@ -35,6 +35,7 @@ export function AuthProvider({ children }) {
     await SecureStore.setItemAsync('gdp_token', tok);
     setToken(tok);
     setUser(usuario);
+    try { const me = await api.me(); if (me.plan) setPlan(me.plan); } catch {}
     return usuario;
   };
 
@@ -43,9 +44,10 @@ export function AuthProvider({ children }) {
     await SecureStore.deleteItemAsync('gdp_token');
     setToken(null);
     setUser(null);
+    setPlan(null);
   };
 
-  const value = useMemo(() => ({ user, token, loading, login, logout }), [user, token, loading]);
+  const value = useMemo(() => ({ user, token, plan, loading, login, logout }), [user, token, plan, loading]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

@@ -374,7 +374,8 @@ def me():
         data["perfil"] = row_to_dict(prop) or {}
         if prop:
             plan = query_one("""
-                SELECT pl.* FROM suscripciones s JOIN planes pl ON pl.id = s.plan_id
+                SELECT pl.*, s.bloqueada, s.intentos_fallo, s.fecha_proximo_cobro
+                FROM suscripciones s JOIN planes pl ON pl.id = s.plan_id
                 WHERE s.usuario_id = ? AND s.estado = 'activa'
             """, (user["id"],))
             data["plan"] = row_to_dict(plan) or {}
@@ -580,13 +581,14 @@ def _confirmar_pago(referencia, wompi_id=""):
 
 
 def _renovar_cobros():
-    """Cobra automaticamente las suscripciones vencidas (recurrente mensual)."""
+    """Cobra automaticamente las suscripciones vencidas (recurrente mensual).
+    Reintenta 2 veces; si sigue fallando, bloquea la cuenta hasta que paguen o cancelen."""
     if not _wompi_disponible():
         return
     for s in query_all("""
         SELECT s.id, s.usuario_id, s.plan_id, s.fecha_proximo_cobro, u.email, pl.nombre, pl.precio_mensual
         FROM suscripciones s JOIN usuarios u ON u.id = s.usuario_id JOIN planes pl ON pl.id = s.plan_id
-        WHERE s.estado = 'activa' AND s.fecha_proximo_cobro IS NOT NULL AND s.fecha_proximo_cobro <= date('now')
+        WHERE s.estado = 'activa' AND s.bloqueada = 0 AND s.fecha_proximo_cobro IS NOT NULL AND s.fecha_proximo_cobro <= date('now')
     """):
         tarjeta = query_one("SELECT * FROM tarjetas WHERE usuario_id=? AND activo=1", (s["usuario_id"],))
         if not tarjeta:
@@ -595,17 +597,34 @@ def _renovar_cobros():
         referencia = f"gdp-rec-{s['usuario_id']}-{s['plan_id']}-{secrets.token_hex(6)}"
         g.db.execute("INSERT INTO transacciones (usuario_id, plan_id, referencia, monto_cents, metodo, estado) VALUES (?,?,?,?,?,?)",
                      (s["usuario_id"], s["plan_id"], referencia, monto, "card", "pendiente"))
-        resp_data, _ = _cobrar_tarjeta(tarjeta["wompi_token"], monto, referencia, s["email"])
-        if resp_data and resp_data.get("status") == "APPROVED":
-            g.db.execute("UPDATE transacciones SET estado='aprobada', wompi_id=? WHERE referencia=?", (resp_data.get("id", ""), referencia))
+
+        exito = False
+        for intento in range(2):
+            resp_data, _ = _cobrar_tarjeta(tarjeta["wompi_token"], monto, referencia, s["email"])
+            if resp_data and resp_data.get("status") == "APPROVED":
+                exito = True
+                g.db.execute("UPDATE transacciones SET estado='aprobada', wompi_id=? WHERE referencia=?", (resp_data.get("id", ""), referencia))
+                break
+            # pequeño reintento (segunda vuelta)
+            if intento == 0:
+                continue
+
+        if exito:
             nuevo_cobro = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
-            g.db.execute("UPDATE suscripciones SET fecha_proximo_cobro=? WHERE id=?", (nuevo_cobro, s["id"]))
+            g.db.execute("UPDATE suscripciones SET fecha_proximo_cobro=?, intentos_fallo=0, bloqueada=0 WHERE id=?", (nuevo_cobro, s["id"]))
             _crear_alerta(s["usuario_id"], "sistema", "Pago recurrente realizado",
                           f"Se cobró tu plan {s['nombre']}. Próximo cobro: {nuevo_cobro}.", "suscripcion", s["id"])
         else:
             g.db.execute("UPDATE transacciones SET estado='rechazada' WHERE referencia=?", (referencia,))
-            _crear_alerta(s["usuario_id"], "mora", "No se pudo cobrar tu plan",
-                          f"Tu pago recurrente de {s['nombre']} falló. Actualiza tu tarjeta.", "suscripcion", s["id"])
+            fallos = (s["intentos_fallo"] if "intentos_fallo" in s.keys() else 0) + 1
+            g.db.execute("UPDATE suscripciones SET intentos_fallo=? WHERE id=?", (fallos, s["id"]))
+            if fallos >= 2:
+                g.db.execute("UPDATE suscripciones SET bloqueada=1 WHERE id=?", (s["id"],))
+                _crear_alerta(s["usuario_id"], "mora", "Suscripción bloqueada",
+                              f"No se pudo cobrar tu plan {s['nombre']}. Tu cuenta quedó bloqueada hasta que pagues o canceles.", "suscripcion", s["id"])
+            else:
+                _crear_alerta(s["usuario_id"], "mora", "No se pudo cobrar tu plan",
+                              f"Tu pago recurrente de {s['nombre']} falló. Se reintentará.", "suscripcion", s["id"])
     g.db.commit()
 
 
