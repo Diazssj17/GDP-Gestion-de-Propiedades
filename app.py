@@ -207,6 +207,45 @@ def _wompi_disponible():
     _, public, private = _wompi_env()
     return bool(public and private)
 
+def _tokenizar_tarjeta(card, email):
+    """Tokeniza una tarjeta en Wompi. Devuelve (token, error)."""
+    aceptacion, personal = _wompi_aceptacion()
+    if not aceptacion:
+        return None, "No se pudo obtener el token de aceptación (revisa las claves Wompi)"
+    payload = {
+        "type": "CARD",
+        "customer_email": email,
+        "acceptance_token": aceptacion,
+        "accept_personal_auth": personal,
+        "card": {
+            "number": card.get("number", ""),
+            "exp_month": card.get("exp_month", ""),
+            "exp_year": card.get("exp_year", ""),
+            "cvc": card.get("cvc", ""),
+            "card_holder": card.get("holder", ""),
+        },
+    }
+    code, resp = _wompi_publico_post("/payment_sources", payload)
+    if code in (200, 201):
+        return resp.get("data", {}).get("id"), None
+    return None, resp
+
+def _cobrar_tarjeta(token, monto_cents, referencia, email):
+    """Cobra una tarjeta tokenizada. Devuelve (data, error)."""
+    aceptacion, _ = _wompi_aceptacion()
+    payload = {
+        "acceptance_token": aceptacion,
+        "amount_in_cents": monto_cents,
+        "currency": "COP",
+        "customer_email": email,
+        "reference": referencia,
+        "payment_method": {"type": "CARD", "token": token, "installments": 1},
+    }
+    code, resp = _wompi_privado("POST", "/transactions", payload)
+    if code in (200, 201):
+        return resp.get("data", {}), None
+    return None, resp
+
 def _check_bloqueo(email):
     max_i = int(_politica("login_max_intentos", "5"))
     min_bloq = int(_politica("login_bloqueo_min", "15"))
@@ -540,6 +579,36 @@ def _confirmar_pago(referencia, wompi_id=""):
     return True
 
 
+def _renovar_cobros():
+    """Cobra automaticamente las suscripciones vencidas (recurrente mensual)."""
+    if not _wompi_disponible():
+        return
+    for s in query_all("""
+        SELECT s.id, s.usuario_id, s.plan_id, s.fecha_proximo_cobro, u.email, pl.nombre, pl.precio_mensual
+        FROM suscripciones s JOIN usuarios u ON u.id = s.usuario_id JOIN planes pl ON pl.id = s.plan_id
+        WHERE s.estado = 'activa' AND s.fecha_proximo_cobro IS NOT NULL AND s.fecha_proximo_cobro <= date('now')
+    """):
+        tarjeta = query_one("SELECT * FROM tarjetas WHERE usuario_id=? AND activo=1", (s["usuario_id"],))
+        if not tarjeta:
+            continue
+        monto = int(round(float(s["precio_mensual"]) * 100))
+        referencia = f"gdp-rec-{s['usuario_id']}-{s['plan_id']}-{secrets.token_hex(6)}"
+        g.db.execute("INSERT INTO transacciones (usuario_id, plan_id, referencia, monto_cents, metodo, estado) VALUES (?,?,?,?,?,?)",
+                     (s["usuario_id"], s["plan_id"], referencia, monto, "card", "pendiente"))
+        resp_data, _ = _cobrar_tarjeta(tarjeta["wompi_token"], monto, referencia, s["email"])
+        if resp_data and resp_data.get("status") == "APPROVED":
+            g.db.execute("UPDATE transacciones SET estado='aprobada', wompi_id=? WHERE referencia=?", (resp_data.get("id", ""), referencia))
+            nuevo_cobro = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
+            g.db.execute("UPDATE suscripciones SET fecha_proximo_cobro=? WHERE id=?", (nuevo_cobro, s["id"]))
+            _crear_alerta(s["usuario_id"], "sistema", "Pago recurrente realizado",
+                          f"Se cobró tu plan {s['nombre']}. Próximo cobro: {nuevo_cobro}.", "suscripcion", s["id"])
+        else:
+            g.db.execute("UPDATE transacciones SET estado='rechazada' WHERE referencia=?", (referencia,))
+            _crear_alerta(s["usuario_id"], "mora", "No se pudo cobrar tu plan",
+                          f"Tu pago recurrente de {s['nombre']} falló. Actualiza tu tarjeta.", "suscripcion", s["id"])
+    g.db.commit()
+
+
 @app.route("/api/pagos/plan", methods=["POST"])
 def pagar_plan():
     user = require_auth()
@@ -568,6 +637,35 @@ def pagar_plan():
             "estado": "aprobada",
             "mensaje": "Pago simulado (configura WOMPI_* para pagos reales)"
         }), 201
+
+    # Tarjeta (cobro recurrente): tokenizar + cobrar + guardar token
+    if metodo == "card":
+        card = data.get("card", {})
+        token, err = _tokenizar_tarjeta(card, user["email"])
+        if not token:
+            g.db.execute("UPDATE transacciones SET estado='error', detalles=? WHERE referencia=?", (str(err)[:300], referencia))
+            g.db.commit()
+            return jsonify({"error": "No se pudo validar la tarjeta", "detalle": err}), 400
+        resp_data, err2 = _cobrar_tarjeta(token, monto_cents, referencia, user["email"])
+        if resp_data is None:
+            g.db.execute("UPDATE transacciones SET estado='error', detalles=? WHERE referencia=?", (str(err2)[:300], referencia))
+            g.db.commit()
+            return jsonify({"error": "No se pudo cobrar la tarjeta", "detalle": err2}), 502
+        wompi_id = resp_data.get("id", "")
+        status = resp_data.get("status", "")
+        g.db.execute("UPDATE transacciones SET wompi_id=? WHERE referencia=?", (wompi_id, referencia))
+        g.db.execute("UPDATE tarjetas SET activo=0 WHERE usuario_id=?", (user["id"],))
+        g.db.execute("INSERT INTO tarjetas (usuario_id, wompi_token, ultimos4, marca, exp_mes, exp_anio) VALUES (?,?,?,?,?,?)",
+                     (user["id"], token, (card.get("number", "") or "")[-4:], resp_data.get("payment_method", {}).get("extra", {}).get("brand", "") or "card", card.get("exp_month", ""), card.get("exp_year", "")))
+        if status == "APPROVED":
+            _confirmar_pago(referencia, wompi_id=wompi_id)
+            return jsonify({"ok": True, "estado": "aprobada", "referencia": referencia}), 201
+        if status == "DECLINED":
+            g.db.execute("UPDATE transacciones SET estado='rechazada' WHERE referencia=?", (referencia,))
+            g.db.commit()
+            return jsonify({"error": "Tarjeta rechazada"}), 402
+        g.db.commit()
+        return jsonify({"ok": True, "estado": "pendiente", "referencia": referencia}), 201
 
     aceptacion, personal = _wompi_aceptacion()
     if metodo == "whatsapp":
@@ -647,6 +745,36 @@ def webhook_wompi():
         _log_evento("webhook_wompi_aprobado", detalles=f"ref={referencia}")
     else:
         _log_evento("webhook_wompi", detalles=f"event={event} status={estado} ref={referencia}")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/tarjeta")
+def mi_tarjeta():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    t = query_one("SELECT ultimos4, marca, exp_mes, exp_anio FROM tarjetas WHERE usuario_id=? AND activo=1", (user["id"],))
+    return jsonify({"tarjeta": row_to_dict(t) if t else None})
+
+
+@app.route("/api/suscripcion/cancelar", methods=["POST"])
+def cancelar_suscripcion():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    g.db.execute("UPDATE suscripciones SET estado='cancelada' WHERE usuario_id=? AND estado='activa'", (user["id"],))
+    g.db.execute("UPDATE tarjetas SET activo=0 WHERE usuario_id=?", (user["id"],))
+    g.db.commit()
+    _log_evento("cancelar_suscripcion", usuario_id=user["id"])
+    return jsonify({"ok": True})
+
+
+@app.route("/api/cobros/renovar", methods=["POST"])
+def renovar_cobros():
+    user = require_auth()
+    if not user or user["rol"] != "superadmin":
+        return jsonify({"error": "No autorizado (solo superadmin)"}), 403
+    _renovar_cobros()
     return jsonify({"ok": True})
 
 
@@ -1286,6 +1414,7 @@ def _crear_alerta(usuario_id, tipo, titulo, mensaje, ref_tipo="", ref_id=0):
 def generar_alertas():
     """Genera alertas automaticas (al abrir la app)."""
     hoy = datetime.now().strftime("%Y-%m-%d")
+    _renovar_cobros()
 
     # --- Propietarios ---
     for p in query_all("SELECT id, usuario_id FROM propietarios"):

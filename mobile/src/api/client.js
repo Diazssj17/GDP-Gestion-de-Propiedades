@@ -36,6 +36,8 @@ export const api = {
   leerTodasAlertas: () => client.post('/api/alertas/leer_todas').then(r => r.data),
   registrarPush: (token) => client.post('/api/push/registrar', { token }).then(r => r.data),
   legal: () => client.get('/api/legal').then(r => r.data),
+  miTarjeta: () => client.get('/api/tarjeta').then(r => r.data),
+  cancelarSuscripcion: () => client.post('/api/suscripcion/cancelar').then(r => r.data),
   logout: () => client.post('/api/logout').then(r => r.data),
   resumen: () => client.get('/api/reportes/resumen').then(r => r.data),
   adminResumen: () => client.get('/api/admin/resumen').then(r => r.data),

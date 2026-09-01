@@ -555,6 +555,21 @@ def crear_tablas():
         )
     """)
 
+    # --- 26) Tarjetas tokenizadas (cobro recurrente Wompi) ---
+    conexion.execute("""
+        CREATE TABLE IF NOT EXISTS tarjetas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            wompi_token TEXT NOT NULL,
+            ultimos4 TEXT DEFAULT '',
+            marca TEXT DEFAULT '',
+            exp_mes TEXT DEFAULT '',
+            exp_anio TEXT DEFAULT '',
+            activo INTEGER NOT NULL DEFAULT 1,
+            fecha TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     # Indices escalabilidad
     indices = [
         "CREATE INDEX IF NOT EXISTS idx_propiedades_propietario ON propiedades(propietario_id)",
@@ -587,6 +602,7 @@ def crear_tablas():
         "CREATE INDEX IF NOT EXISTS idx_recuperaciones_token ON recuperaciones(token)",
         "CREATE INDEX IF NOT EXISTS idx_transacciones_usuario ON transacciones(usuario_id)",
         "CREATE INDEX IF NOT EXISTS idx_dispositivos_usuario ON dispositivos(usuario_id)",
+        "CREATE INDEX IF NOT EXISTS idx_tarjetas_usuario ON tarjetas(usuario_id)",
     ]
     for sql in indices:
         conexion.execute(sql)
@@ -753,7 +769,7 @@ if __name__ == "__main__":
     crear_tablas()
     print(f"Base de datos GDP lista en: {DB_PATH}")
     con = get_db()
-    for tabla in ["roles","usuarios","planes","suscripciones","descuentos","propietarios","propiedades","unidades","inquilinos","contratos","pagos","servicios","recibos","distribucion_servicios","alertas","notificaciones","mantenimiento","mantenimientos","documentos","reportes_generados","logs","configuracion","tokens","login_intentos","politicas","recuperaciones","transacciones","dispositivos","documentos_legales"]:
+    for tabla in ["roles","usuarios","planes","suscripciones","descuentos","propietarios","propiedades","unidades","inquilinos","contratos","pagos","servicios","recibos","distribucion_servicios","alertas","notificaciones","mantenimiento","mantenimientos","documentos","reportes_generados","logs","configuracion","tokens","login_intentos","politicas","recuperaciones","transacciones","dispositivos","documentos_legales","tarjetas"]:
         try:
             count = con.execute(f"SELECT COUNT(*) as c FROM {tabla}").fetchone()["c"]
             print(f"  {tabla}: {count}")
