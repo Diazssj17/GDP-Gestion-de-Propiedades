@@ -156,12 +156,26 @@ def _politica(clave, default="0"):
 
 _aceptacion_cache = {"token": "", "personal": ""}
 
+def _wompi_env():
+    """Lee claves Wompi: primero env vars, luego tabla configuracion."""
+    def _val(env, clave):
+        v = os.environ.get(env, "")
+        if not v:
+            f = query_one("SELECT valor FROM configuracion WHERE clave=?", (clave,))
+            v = f["valor"] if f else ""
+        return v
+    base = os.environ.get("WOMPI_BASE_URL", "") or _val("", "wompi_base_url") or "https://production.wompi.co/v1"
+    public = _val("WOMPI_PUBLIC_KEY", "wompi_public_key")
+    private = _val("WOMPI_PRIVATE_KEY", "wompi_private_key")
+    return base, public, private
+
 def _wompi_aceptacion():
     """Obtiene los tokens de aceptacion (public key). Cache 20 min."""
-    if not WOMPI_PUBLIC:
+    base, public, _ = _wompi_env()
+    if not public:
         return None, None
     try:
-        r = requests.get(f"{WOMPI_BASE}/merchants/{WOMPI_PUBLIC}", timeout=15)
+        r = requests.get(f"{base}/merchants/{public}", timeout=15)
         if r.status_code == 200:
             d = r.json().get("data", {})
             _aceptacion_cache["token"] = d.get("presigned_acceptance", "")
@@ -173,8 +187,9 @@ def _wompi_aceptacion():
 
 def _wompi_privado(method, path, payload=None):
     """Llamada autenticada a Wompi (private key)."""
-    headers = {"Authorization": f"Bearer {WOMPI_PRIVATE}", "Content-Type": "application/json"}
-    url = f"{WOMPI_BASE}{path}"
+    base, _, private = _wompi_env()
+    headers = {"Authorization": f"Bearer {private}", "Content-Type": "application/json"}
+    url = f"{base}{path}"
     if method == "POST":
         r = requests.post(url, json=payload, headers=headers, timeout=20)
     else:
@@ -183,12 +198,14 @@ def _wompi_privado(method, path, payload=None):
 
 def _wompi_publico_post(path, payload):
     """Llamada a Wompi con la public key (tokenizacion de tarjeta)."""
-    headers = {"Authorization": f"Bearer {WOMPI_PUBLIC}", "Content-Type": "application/json"}
-    r = requests.post(f"{WOMPI_BASE}{path}", json=payload, headers=headers, timeout=20)
+    base, public, _ = _wompi_env()
+    headers = {"Authorization": f"Bearer {public}", "Content-Type": "application/json"}
+    r = requests.post(f"{base}{path}", json=payload, headers=headers, timeout=20)
     return r.status_code, (r.json() if r.content else {})
 
 def _wompi_disponible():
-    return bool(WOMPI_PUBLIC and WOMPI_PRIVATE)
+    _, public, private = _wompi_env()
+    return bool(public and private)
 
 def _check_bloqueo(email):
     max_i = int(_politica("login_max_intentos", "5"))
@@ -569,7 +586,7 @@ def pagar_plan():
             wompi_id = resp.get("data", {}).get("id", "")
             g.db.execute("UPDATE transacciones SET wompi_id=? WHERE referencia=?", (wompi_id, referencia))
             g.db.commit()
-            enlace = f"{WOMPI_BASE}/transactions/{wompi_id}/redirect"
+            enlace = f"{_wompi_env()[0]}/transactions/{wompi_id}/redirect"
             return jsonify({"ok": True, "referencia": referencia, "link_pago": enlace}), 201
         return jsonify({"error": "No se pudo crear el pago", "detalle": resp}), 502
 
