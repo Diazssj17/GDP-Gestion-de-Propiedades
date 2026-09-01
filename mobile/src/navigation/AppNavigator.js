@@ -163,7 +163,7 @@ export default function AppNavigator() {
     <NavigationContainer theme={navTheme}>
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         <RootStack.Screen name="Main" component={() => tabs} />
-        <RootStack.Screen name="Alertas" component={AlertasScreen} options={{ headerShown: true, title: 'Notificaciones', headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerRight: () => <HeaderRight /> }} />
+        <RootStack.Screen name="Alertas" component={AlertasScreen} options={{ headerShown: true, headerTitle: '', headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerRight: () => <HeaderRight /> }} />
       </RootStack.Navigator>
     </NavigationContainer>
   );
