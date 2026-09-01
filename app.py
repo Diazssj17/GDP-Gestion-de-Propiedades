@@ -30,6 +30,7 @@ import sqlite3
 
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
+app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 
 # --- Configuracion SMTP (variables de entorno; no guardar claves en el repo) ---
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "")

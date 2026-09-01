@@ -50,6 +50,18 @@ Control de seguridad implementado siguiendo buenas prácticas de la norma **ISO/
 - No se almacenan datos sensibles en el repositorio; secretos vía variables de entorno (Render env).
 - La app maneja datos personales; se debe implementar y publicar una **política de privacidad** y consentimiento de tratamiento de datos (ver `docs/modelo.md` sobre `acepta_tratamiento`).
 
+### Variables de entorno (ninguna clave hardcodeada)
+
+| Variable | Descripción |
+|----------|-------------|
+| `ADMIN_EMAIL` | Email del superadmin (default `admin@gdp.com`) |
+| `ADMIN_PASSWORD` | Contraseña del superadmin (si no se define, se genera aleatoria temporal) |
+| `SEED_DEMO` / `DEMO_PASSWORD` | Crea usuario demo solo si `SEED_DEMO=1` |
+| `SECRET_KEY` | Clave de Flask (si no se define, se genera aleatoria) |
+| `SMTP_SERVER` / `SMTP_PORT` / `SMTP_USUARIO` / `SMTP_CLAVE` / `BASE_URL` | Envío de correo |
+| `WOMPI_PUBLIC_KEY` / `WOMPI_PRIVATE_KEY` / `WOMPI_BASE_URL` / `WOMPI_WEBHOOK_SECRET` | Pasarela de pago |
+| `WHATSAPP_NUMERO` | Número para organizar pagos por WhatsApp |
+
 ---
 
 ## Mejoras recomendadas (roadmap de seguridad)

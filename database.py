@@ -9,6 +9,7 @@ Escalabilidad: Casa = Propiedad con 1 Unidad | Inmobiliaria = propietarios.tipo=
 
 import sqlite3
 import os
+import secrets
 from werkzeug.security import generate_password_hash
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -621,14 +622,20 @@ def sembrar_datos_iniciales(conexion):
             conexion.execute("INSERT INTO roles (nombre, descripcion) VALUES (?,?)", r)
         print("[OK] Roles creados: superadmin, propietario, inquilino, operador")
 
-    # Superadmin
-    admin = conexion.execute("SELECT id FROM usuarios WHERE email=?", ("admin@gdp.com",)).fetchone()
+    # Superadmin (credenciales por variables de entorno; sin contrasena hardcodeada)
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@gdp.com")
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
+    if not admin_password:
+        admin_password = secrets.token_urlsafe(12)
+        print(f"[SEGURIDAD] ADMIN_PASSWORD no definida. Se genero una temporal: {admin_password}")
+        print("[SEGURIDAD] Cambiala por variable de entorno ADMIN_PASSWORD en produccion.")
+    admin = conexion.execute("SELECT id FROM usuarios WHERE email=?", (admin_email,)).fetchone()
     if not admin:
         conexion.execute(
             "INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES (?,?,?,?)",
-            ("Administrador Plataforma", "admin@gdp.com", generate_password_hash("admin123"), "superadmin"),
+            ("Administrador Plataforma", admin_email, generate_password_hash(admin_password), "superadmin"),
         )
-        print("[OK] Superadmin creado: admin@gdp.com / admin123")
+        print(f"[OK] Superadmin creado: {admin_email}")
 
     # Vincular rol_id
     try:
@@ -724,44 +731,46 @@ def sembrar_datos_iniciales(conexion):
             conexion.execute("INSERT INTO politicas (clave, valor, descripcion) VALUES (?,?,?)", (k, v, d))
         print("[OK] Politicas de seguridad creadas")
 
-    # Demo: 1 propietario con 2 casas
-    demo_user = conexion.execute("SELECT id FROM usuarios WHERE email=?", ("demo@propietario.com",)).fetchone()
-    if not demo_user:
-        conexion.execute(
-            "INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES (?,?,?,?)",
-            ("Propietario Demo", "demo@propietario.com", generate_password_hash("demo123"), "propietario"),
-        )
-        demo_user_id = conexion.execute("SELECT id FROM usuarios WHERE email=?", ("demo@propietario.com",)).fetchone()["id"]
-        conexion.execute("UPDATE usuarios SET rol_id=(SELECT id FROM roles WHERE nombre='propietario') WHERE id=?", (demo_user_id,))
-        conexion.execute(
-            "INSERT INTO propietarios (usuario_id, tipo, documento, direccion, ciudad) VALUES (?,?,?,?,?)",
-            (demo_user_id, "persona", "1000000001", "Calle 10 # 5-20", "Villavicencio"),
-        )
-        prop_id = conexion.execute("SELECT id FROM propietarios WHERE usuario_id=?", (demo_user_id,)).fetchone()["id"]
-        conexion.execute(
-            "INSERT INTO propiedades (propietario_id, nombre, tipo, direccion, ciudad, barrio, num_unidades) VALUES (?,?,?,?,?,?,?)",
-            (prop_id, "Casa Centro", "casa", "Calle 10 # 5-20", "Villavicencio", "Centro", 1),
-        )
-        casa_id = conexion.execute("SELECT id FROM propiedades WHERE nombre='Casa Centro' AND propietario_id=?", (prop_id,)).fetchone()["id"]
-        conexion.execute(
-            "INSERT INTO unidades (propiedad_id, codigo, nombre, tipo, habitaciones, banos, area_m2, canon_base, estado) VALUES (?,?,?,?,?,?,?,?,?)",
-            (casa_id, "UNICA", "Casa Principal", "casa", 3, 2, 120, 900000, "disponible"),
-        )
-        conexion.execute(
-            "INSERT INTO propiedades (propietario_id, nombre, tipo, direccion, ciudad, barrio, num_unidades) VALUES (?,?,?,?,?,?,?)",
-            (prop_id, "Casa Barzal", "casa", "Carrera 30 # 40-15", "Villavicencio", "Barzal", 1),
-        )
-        casa2_id = conexion.execute("SELECT id FROM propiedades WHERE nombre='Casa Barzal' AND propietario_id=?", (prop_id,)).fetchone()["id"]
-        conexion.execute(
-            "INSERT INTO unidades (propiedad_id, codigo, nombre, tipo, habitaciones, banos, area_m2, canon_base, estado) VALUES (?,?,?,?,?,?,?,?,?)",
-            (casa2_id, "UNICA", "Casa Principal", "casa", 2, 1, 80, 700000, "disponible"),
-        )
-        plan_basico = conexion.execute("SELECT id FROM planes WHERE nombre='Basico'").fetchone()["id"]
-        conexion.execute(
-            "INSERT INTO suscripciones (usuario_id, plan_id, estado) VALUES (?,?,?)",
-            (demo_user_id, plan_basico, "activa"),
-        )
-        print("[OK] Demo creado: demo@propietario.com / demo123 -> 2 casas (2 propiedades, 2 unidades)")
+    # Demo (solo desarrollo): se crea si SEED_DEMO=1. Contrasena por variable de entorno.
+    if os.environ.get("SEED_DEMO", "") == "1":
+        demo_user = conexion.execute("SELECT id FROM usuarios WHERE email=?", ("demo@propietario.com",)).fetchone()
+        if not demo_user:
+            demo_password = os.environ.get("DEMO_PASSWORD", secrets.token_urlsafe(12))
+            conexion.execute(
+                "INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES (?,?,?,?)",
+                ("Propietario Demo", "demo@propietario.com", generate_password_hash(demo_password), "propietario"),
+            )
+            demo_user_id = conexion.execute("SELECT id FROM usuarios WHERE email=?", ("demo@propietario.com",)).fetchone()["id"]
+            conexion.execute("UPDATE usuarios SET rol_id=(SELECT id FROM roles WHERE nombre='propietario') WHERE id=?", (demo_user_id,))
+            conexion.execute(
+                "INSERT INTO propietarios (usuario_id, tipo, documento, direccion, ciudad) VALUES (?,?,?,?,?)",
+                (demo_user_id, "persona", "1000000001", "Calle 10 # 5-20", "Villavicencio"),
+            )
+            prop_id = conexion.execute("SELECT id FROM propietarios WHERE usuario_id=?", (demo_user_id,)).fetchone()["id"]
+            conexion.execute(
+                "INSERT INTO propiedades (propietario_id, nombre, tipo, direccion, ciudad, barrio, num_unidades) VALUES (?,?,?,?,?,?,?)",
+                (prop_id, "Casa Centro", "casa", "Calle 10 # 5-20", "Villavicencio", "Centro", 1),
+            )
+            casa_id = conexion.execute("SELECT id FROM propiedades WHERE nombre='Casa Centro' AND propietario_id=?", (prop_id,)).fetchone()["id"]
+            conexion.execute(
+                "INSERT INTO unidades (propiedad_id, codigo, nombre, tipo, habitaciones, banos, area_m2, canon_base, estado) VALUES (?,?,?,?,?,?,?,?,?)",
+                (casa_id, "UNICA", "Casa Principal", "casa", 3, 2, 120, 900000, "disponible"),
+            )
+            conexion.execute(
+                "INSERT INTO propiedades (propietario_id, nombre, tipo, direccion, ciudad, barrio, num_unidades) VALUES (?,?,?,?,?,?,?)",
+                (prop_id, "Casa Barzal", "casa", "Carrera 30 # 40-15", "Villavicencio", "Barzal", 1),
+            )
+            casa2_id = conexion.execute("SELECT id FROM propiedades WHERE nombre='Casa Barzal' AND propietario_id=?", (prop_id,)).fetchone()["id"]
+            conexion.execute(
+                "INSERT INTO unidades (propiedad_id, codigo, nombre, tipo, habitaciones, banos, area_m2, canon_base, estado) VALUES (?,?,?,?,?,?,?,?,?)",
+                (casa2_id, "UNICA", "Casa Principal", "casa", 2, 1, 80, 700000, "disponible"),
+            )
+            plan_basico = conexion.execute("SELECT id FROM planes WHERE nombre='Basico'").fetchone()["id"]
+            conexion.execute(
+                "INSERT INTO suscripciones (usuario_id, plan_id, estado) VALUES (?,?,?)",
+                (demo_user_id, plan_basico, "activa"),
+            )
+            print(f"[OK] Demo creado: demo@propietario.com (contrasena por DEMO_PASSWORD)")
 
     conexion.commit()
 
