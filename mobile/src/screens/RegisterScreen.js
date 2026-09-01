@@ -70,9 +70,9 @@ export default function RegisterScreen({ navigation }) {
       ))}
 
       <Text style={[s.section, { color: c.text }]}>Consentimientos</Text>
-      <Check value={aceptaTerminos} onToggle={() => setAceptaTerminos(v => !v)}>Acepto los Términos y Condiciones</Check>
-      <Check value={aceptaTratamiento} onToggle={() => setAceptaTratamiento(v => !v)}>Acepto la Política de Tratamiento de Datos (Ley 1581)</Check>
-      <Check value={autorizaDebito} onToggle={() => setAutorizaDebito(v => !v)}>Autorizo el débito mensual recurrente de mi plan</Check>
+      <Check value={aceptaTerminos} onToggle={() => setAceptaTerminos(v => !v)}>Acepto los <Text style={{ color: c.accent, textDecorationLine: 'underline' }} onPress={() => navigation.navigate('Legal')}>Términos y Condiciones</Text></Check>
+      <Check value={aceptaTratamiento} onToggle={() => setAceptaTratamiento(v => !v)}>Acepto la <Text style={{ color: c.accent, textDecorationLine: 'underline' }} onPress={() => navigation.navigate('Legal')}>Política de Tratamiento de Datos (Ley 1581)</Text></Check>
+      <Check value={autorizaDebito} onToggle={() => setAutorizaDebito(v => !v)}>Autorizo el <Text style={{ color: c.accent, textDecorationLine: 'underline' }} onPress={() => navigation.navigate('Legal')}>débito mensual recurrente</Text></Check>
 
       {error ? <Text style={s.error}>{error}</Text> : null}
       <TouchableOpacity style={[s.btn, { backgroundColor: c.primary }]} onPress={registrar} disabled={loading}>

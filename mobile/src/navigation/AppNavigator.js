@@ -25,6 +25,7 @@ import PropietarioAnalisisScreen from '../screens/PropietarioAnalisisScreen';
 import PlanesScreen from '../screens/PlanesScreen';
 import SuscripcionScreen from '../screens/SuscripcionScreen';
 import AlertasScreen from '../screens/AlertasScreen';
+import LegalScreen from '../screens/LegalScreen';
 import { usePushNotifications } from '../notifications/usePushNotifications';
 
 const Tab = createBottomTabNavigator();
@@ -164,6 +165,7 @@ export default function AppNavigator() {
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         <RootStack.Screen name="Main" component={() => tabs} />
         <RootStack.Screen name="Alertas" component={AlertasScreen} options={{ headerShown: true, headerTitle: '', headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerRight: () => <HeaderRight /> }} />
+        <RootStack.Screen name="Legal" component={LegalScreen} options={{ headerShown: true, title: 'Documentos legales', headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text }} />
       </RootStack.Navigator>
     </NavigationContainer>
   );

@@ -144,7 +144,7 @@ export default function SuscripcionScreen({ navigation }) {
 
           <TouchableOpacity style={s.checkRow} onPress={() => setAutorizaDebito(v => !v)}>
             <Ionicons name={autorizaDebito ? 'checkbox' : 'square-outline'} size={20} color={autorizaDebito ? c.accent : c.textMuted} />
-            <Text style={[s.checkText, { color: c.textSecondary }]}>Autorizo el débito mensual recurrente de mi plan</Text>
+            <Text style={[s.checkText, { color: c.textSecondary }]}>Autorizo el <Text style={{ color: c.accent, textDecorationLine: 'underline' }} onPress={() => navigation.navigate('Legal')}>débito mensual recurrente</Text></Text>
           </TouchableOpacity>
           {msg ? <Text style={[s.msg, { color: c.success }]}>{msg}</Text> : null}
           {error ? <Text style={s.error}>{error}</Text> : null}

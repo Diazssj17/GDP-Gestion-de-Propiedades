@@ -4,6 +4,7 @@ import { useTheme } from '../theme/ThemeContext';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import RecuperarScreen from '../screens/RecuperarScreen';
+import LegalScreen from '../screens/LegalScreen';
 
 const Stack = createStackNavigator();
 
@@ -16,6 +17,7 @@ export default function AuthStack() {
         <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Registro" component={RegisterScreen} options={{ title: '' }} />
         <Stack.Screen name="Recuperar" component={RecuperarScreen} options={{ title: '' }} />
+        <Stack.Screen name="Legal" component={LegalScreen} options={{ title: 'Documentos legales', headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
