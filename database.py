@@ -624,13 +624,13 @@ def sembrar_datos_iniciales(conexion):
 
     # Superadmin (credenciales por variables de entorno; sin contrasena hardcodeada)
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@gdp.com")
-    admin_password = os.environ.get("ADMIN_PASSWORD", "")
-    if not admin_password:
-        admin_password = secrets.token_urlsafe(12)
-        print(f"[SEGURIDAD] ADMIN_PASSWORD no definida. Se genero una temporal: {admin_password}")
-        print("[SEGURIDAD] Cambiala por variable de entorno ADMIN_PASSWORD en produccion.")
     admin = conexion.execute("SELECT id FROM usuarios WHERE email=?", (admin_email,)).fetchone()
     if not admin:
+        admin_password = os.environ.get("ADMIN_PASSWORD", "")
+        if not admin_password:
+            admin_password = secrets.token_urlsafe(12)
+            print(f"[SEGURIDAD] ADMIN_PASSWORD no definida. Se genero una temporal: {admin_password}")
+            print("[SEGURIDAD] Cambiala por variable de entorno ADMIN_PASSWORD en produccion.")
         conexion.execute(
             "INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES (?,?,?,?)",
             ("Administrador Plataforma", admin_email, generate_password_hash(admin_password), "superadmin"),
