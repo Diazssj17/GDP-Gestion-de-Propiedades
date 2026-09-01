@@ -7,6 +7,12 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: ADMIN_EMAIL
+        value: admin@gdp.com
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SECRET_KEY
+        sync: false
       - key: SMTP_SERVER
         value: smtp.gmail.com
       - key: SMTP_PORT
