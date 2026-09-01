@@ -1223,13 +1223,138 @@ def list_pagos():
     sql += " ORDER BY p.fecha_vencimiento DESC LIMIT 50"
     return jsonify([row_to_dict(r) for r in query_all(sql, params)])
 
+# --- Notificaciones / Alertas ---
+
+def _alerta_existe(usuario_id, tipo, ref_tipo, ref_id):
+    return query_one("SELECT id FROM alertas WHERE usuario_destino_id=? AND tipo=? AND referencia_tipo=? AND referencia_id=?", (usuario_id, tipo, ref_tipo, ref_id))
+
+def _push_a_usuario(usuario_id, titulo, cuerpo):
+    toks = query_all("SELECT expo_push_token FROM dispositivos WHERE usuario_id=? AND activo=1", (usuario_id,))
+    for t in toks:
+        try:
+            requests.post("https://exp.host/--/api/v2/push/send", json={
+                "to": t["expo_push_token"], "title": titulo, "body": cuerpo, "sound": "default"
+            }, timeout=10)
+        except Exception:
+            pass
+
+def _crear_alerta(usuario_id, tipo, titulo, mensaje, ref_tipo="", ref_id=0):
+    if _alerta_existe(usuario_id, tipo, ref_tipo, ref_id):
+        return
+    g.db.execute("INSERT INTO alertas (usuario_destino_id, tipo, titulo, mensaje, referencia_tipo, referencia_id) VALUES (?,?,?,?,?,?)",
+                 (usuario_id, tipo, titulo, mensaje, ref_tipo, ref_id))
+    g.db.commit()
+    _push_a_usuario(usuario_id, titulo, mensaje)
+
+def generar_alertas():
+    """Genera alertas automaticas (al abrir la app)."""
+    hoy = datetime.now().strftime("%Y-%m-%d")
+
+    # --- Propietarios ---
+    for p in query_all("SELECT id, usuario_id FROM propietarios"):
+        uid, pid = p["usuario_id"], p["id"]
+        # Contratos proximo a vencer (<= 30 dias)
+        for c in query_all("""
+            SELECT c.id, c.fecha_fin, u.codigo FROM contratos c
+            JOIN unidades u ON u.id = c.unidad_id JOIN propiedades pr ON pr.id = u.propiedad_id
+            WHERE pr.propietario_id = ? AND c.estado = 'activo' AND c.fecha_fin <= date('now','+30 day')
+        """, (pid,)):
+            _crear_alerta(uid, "vencimiento_contrato", "Contrato por vencer",
+                          f"El contrato de {c['codigo']} vence el {c['fecha_fin']}.", "contrato", c["id"])
+        # Pagos en mora
+        for pg in query_all("""
+            SELECT p.id, p.periodo, u.codigo FROM pagos p
+            JOIN contratos c ON c.id = p.contrato_id JOIN unidades u ON u.id = c.unidad_id
+            JOIN propiedades pr ON pr.id = u.propiedad_id
+            WHERE pr.propietario_id = ? AND p.estado = 'mora'
+        """, (pid,)):
+            _crear_alerta(uid, "mora", "Pago en mora",
+                          f"El pago {pg['periodo'] or pg['id']} de {pg['codigo']} está en mora.", "pago", pg["id"])
+        # Recibos por vencer (<= 7 dias)
+        for r in query_all("""
+            SELECT r.id, r.periodo, s.nombre FROM recibos r JOIN servicios s ON s.id = r.servicio_id
+            WHERE r.propiedad_id IN (SELECT id FROM propiedades WHERE propietario_id = ?)
+              AND r.estado = 'pendiente' AND r.fecha_vencimiento IS NOT NULL AND r.fecha_vencimiento != ''
+              AND r.fecha_vencimiento <= date('now','+7 day')
+        """, (pid,)):
+            _crear_alerta(uid, "servicio", "Recibo por vencer",
+                          f"El recibo de {r['nombre']} ({r['periodo']}) vence pronto.", "recibo", r["id"])
+        # Mantenimiento pendiente
+        for m in query_all("""
+            SELECT m.id, m.titulo, u.codigo FROM mantenimientos m JOIN unidades u ON u.id = m.unidad_id
+            JOIN propiedades pr ON pr.id = u.propiedad_id
+            WHERE pr.propietario_id = ? AND m.estado IN ('reportado','pendiente','en_revision','en_proceso')
+        """, (pid,)):
+            _crear_alerta(uid, "mantenimiento", "Mantenimiento pendiente",
+                          f"Ticket '{m['titulo']}' en {m['codigo']} está pendiente.", "mantenimiento", m["id"])
+
+    # --- Inquilinos (con cuenta) ---
+    for i in query_all("SELECT id, usuario_id FROM inquilinos WHERE usuario_id IS NOT NULL"):
+        uid, iid = i["usuario_id"], i["id"]
+        for c in query_all("""
+            SELECT c.id, c.fecha_fin, u.codigo FROM contratos c JOIN unidades u ON u.id = c.unidad_id
+            WHERE c.inquilino_id = ? AND c.estado = 'activo' AND c.fecha_fin <= date('now','+30 day')
+        """, (iid,)):
+            _crear_alerta(uid, "vencimiento_contrato", "Tu contrato vence pronto",
+                          f"Tu contrato de {c['codigo']} vence el {c['fecha_fin']}.", "contrato", c["id"])
+        for pg in query_all("""
+            SELECT p.id, p.periodo FROM pagos p JOIN contratos c ON c.id = p.contrato_id
+            WHERE c.inquilino_id = ? AND p.estado = 'mora'
+        """, (iid,)):
+            _crear_alerta(uid, "mora", "Tienes un pago en mora",
+                          f"El pago {pg['periodo'] or pg['id']} está en mora.", "pago", pg["id"])
+
+
 @app.route("/api/alertas")
 def list_alertas():
     user = require_auth()
     if not user:
         return jsonify({"error": "No autenticado"}), 401
-    rows = query_all("SELECT * FROM alertas WHERE usuario_destino_id=? ORDER BY fecha_creacion DESC LIMIT 20", (user["id"],))
-    return jsonify([row_to_dict(r) for r in rows])
+    generar_alertas()
+    rows = query_all("SELECT * FROM alertas WHERE usuario_destino_id=? ORDER BY fecha_creacion DESC LIMIT 50", (user["id"],))
+    no_leidas = query_one("SELECT COUNT(*) as c FROM alertas WHERE usuario_destino_id=? AND leida=0", (user["id"],))["c"]
+    return jsonify({"alertas": [row_to_dict(r) for r in rows], "no_leidas": no_leidas})
+
+
+@app.route("/api/alertas/<int:alerta_id>/leer", methods=["POST"])
+def leer_alerta(alerta_id):
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    g.db.execute("UPDATE alertas SET leida=1 WHERE id=? AND usuario_destino_id=?", (alerta_id, user["id"]))
+    g.db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/alertas/leer_todas", methods=["POST"])
+def leer_todas_alertas():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    g.db.execute("UPDATE alertas SET leida=1 WHERE usuario_destino_id=?", (user["id"],))
+    g.db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/push/registrar", methods=["POST"])
+def registrar_dispositivo():
+    user = require_auth()
+    if not user:
+        return jsonify({"error": "No autenticado"}), 401
+    data = request.get_json(silent=True) or {}
+    token = (data.get("token") or "").strip()
+    if not token:
+        return jsonify({"error": "token requerido"}), 400
+    existente = query_one("SELECT id FROM dispositivos WHERE expo_push_token=?", (token,))
+    if existente:
+        g.db.execute("UPDATE dispositivos SET usuario_id=?, activo=1 WHERE expo_push_token=?", (user["id"], token))
+    else:
+        g.db.execute("INSERT INTO dispositivos (usuario_id, expo_push_token, plataforma) VALUES (?,?,?)",
+                     (user["id"], token, data.get("plataforma", "")))
+    g.db.commit()
+    return jsonify({"ok": True})
+
+
 
 @app.route("/api/reportes/resumen")
 def reporte_resumen():

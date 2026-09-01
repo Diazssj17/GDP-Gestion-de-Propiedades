@@ -24,9 +24,12 @@ import PropietariosScreen from '../screens/PropietariosScreen';
 import PropietarioAnalisisScreen from '../screens/PropietarioAnalisisScreen';
 import PlanesScreen from '../screens/PlanesScreen';
 import SuscripcionScreen from '../screens/SuscripcionScreen';
+import AlertasScreen from '../screens/AlertasScreen';
+import { usePushNotifications } from '../notifications/usePushNotifications';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
+const RootStack = createStackNavigator();
 
 const cardHeader = (theme) => ({ headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerRight: () => <HeaderRight />, headerTitle: '' });
 
@@ -91,6 +94,7 @@ export default function AppNavigator() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const rol = user?.rol;
+  usePushNotifications();
   const navTheme = { ...(theme.dark ? DarkTheme : DefaultTheme), colors: { ...(theme.dark ? DarkTheme : DefaultTheme).colors, primary: theme.colors.accent, background: theme.colors.background, card: theme.colors.card, text: theme.colors.text, border: theme.colors.border } };
 
   const iconMap = {
@@ -121,36 +125,27 @@ export default function AppNavigator() {
     };
   };
 
-  // Superadmin: enfocado en administracion
+  // Tabs segun rol
+  let tabs;
   if (rol === 'superadmin') {
-    return (
-      <NavigationContainer theme={navTheme}>
-        <Tab.Navigator screenOptions={screenOptions}>
-          <Tab.Screen name="Panel" component={AdminDashboardScreen} options={{ headerTitle: '' }} />
-          <Tab.Screen name="Propietarios" component={PropietariosStack} options={{ headerShown: false }} />
-          <Tab.Screen name="Planes" component={PlanesScreen} options={{ headerTitle: '' }} />
-        </Tab.Navigator>
-      </NavigationContainer>
+    tabs = (
+      <Tab.Navigator screenOptions={screenOptions}>
+        <Tab.Screen name="Panel" component={AdminDashboardScreen} options={{ headerTitle: '' }} />
+        <Tab.Screen name="Propietarios" component={PropietariosStack} options={{ headerShown: false }} />
+        <Tab.Screen name="Planes" component={PlanesScreen} options={{ headerTitle: '' }} />
+      </Tab.Navigator>
     );
-  }
-
-  // Inquilino: solo sus modulos
-  if (rol === 'inquilino') {
-    return (
-      <NavigationContainer theme={navTheme}>
-        <Tab.Navigator screenOptions={screenOptions}>
-          <Tab.Screen name="Contratos" component={ContratosStack} options={{ headerShown: false }} />
-          <Tab.Screen name="Pagos" component={PagosStack} options={{ headerShown: false }} />
-          <Tab.Screen name="Servicios" component={ServiciosStack} options={{ headerShown: false }} />
-          <Tab.Screen name="Mantenimiento" component={MantenimientoStack} options={{ headerShown: false }} />
-        </Tab.Navigator>
-      </NavigationContainer>
+  } else if (rol === 'inquilino') {
+    tabs = (
+      <Tab.Navigator screenOptions={screenOptions}>
+        <Tab.Screen name="Contratos" component={ContratosStack} options={{ headerShown: false }} />
+        <Tab.Screen name="Pagos" component={PagosStack} options={{ headerShown: false }} />
+        <Tab.Screen name="Servicios" component={ServiciosStack} options={{ headerShown: false }} />
+        <Tab.Screen name="Mantenimiento" component={MantenimientoStack} options={{ headerShown: false }} />
+      </Tab.Navigator>
     );
-  }
-
-  // Propietario: modulos como pestanas directas (sin agrupar)
-  return (
-    <NavigationContainer theme={navTheme}>
+  } else {
+    tabs = (
       <Tab.Navigator screenOptions={screenOptions}>
         <Tab.Screen name="Inicio" component={DashboardScreen} options={{ headerTitle: '' }} />
         <Tab.Screen name="Propiedades" component={PropiedadesStack} options={{ headerShown: false }} />
@@ -161,6 +156,15 @@ export default function AppNavigator() {
         <Tab.Screen name="Mantenimiento" component={MantenimientoStack} options={{ headerShown: false }} />
         <Tab.Screen name="Plan" component={SuscripcionScreen} options={{ headerTitle: '' }} />
       </Tab.Navigator>
+    );
+  }
+
+  return (
+    <NavigationContainer theme={navTheme}>
+      <RootStack.Navigator screenOptions={{ headerShown: false }}>
+        <RootStack.Screen name="Main" component={() => tabs} />
+        <RootStack.Screen name="Alertas" component={AlertasScreen} options={{ headerShown: true, title: 'Notificaciones', headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerRight: () => <HeaderRight /> }} />
+      </RootStack.Navigator>
     </NavigationContainer>
   );
 }

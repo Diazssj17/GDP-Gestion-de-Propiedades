@@ -1,5 +1,6 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../auth/AuthContext';
 
@@ -8,9 +9,13 @@ const rolLabel = { superadmin: 'Superadmin', propietario: 'Propietario', inquili
 export default function HeaderRight() {
   const { theme, isDark, toggle } = useTheme();
   const { user, logout } = useAuth();
+  const navigation = useNavigation();
   const c = theme.colors;
   return (
     <View style={s.row}>
+      <Pressable onPress={() => navigation.navigate('Alertas')} hitSlop={8} style={s.iconBtn}>
+        <Ionicons name="notifications-outline" size={20} color={c.text} />
+      </Pressable>
       <View style={[s.chip, { backgroundColor: c.accent }]}>
         <Text style={s.chipText}>{rolLabel[user?.rol] || 'Usuario'}</Text>
       </View>
