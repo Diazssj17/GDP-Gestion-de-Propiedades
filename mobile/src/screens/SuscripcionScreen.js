@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, TextInput, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
@@ -16,7 +16,6 @@ export default function SuscripcionScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [pagar, setPagar] = useState(null); // plan seleccionado para pagar
   const [metodo, setMetodo] = useState('pse');
-  const [documento, setDocumento] = useState('');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -37,12 +36,12 @@ export default function SuscripcionScreen({ navigation }) {
     if (!pagar) return;
     setGuardando(true);
     try {
-      // WhatsApp: abrir chat para organizar el pago (no es pago en linea)
+      const cfg = await api.pagosConfig();
+      // WhatsApp: abrir chat para organizar el pago
       if (metodo === 'whatsapp') {
-        const wa = await api.whatsapp();
-        const numero = (wa.numero || '').replace(/\D/g, '');
+        const numero = (cfg.whatsapp || '').replace(/\D/g, '');
         if (!numero) {
-          setError('No hay número de WhatsApp configurado. Usa PSE o contacta soporte.');
+          setError('No hay número de WhatsApp configurado.');
           setGuardando(false);
           return;
         }
@@ -52,17 +51,15 @@ export default function SuscripcionScreen({ navigation }) {
         setGuardando(false);
         return;
       }
-      // PSE: pagar en linea via Wompi
-      const res = await api.pagarPlan({ plan_id: pagar.id, metodo: 'pse', user_legal_id: documento });
-      if (res.link_pago) {
-        Linking.openURL(res.link_pago);
-        setMsg('Abre el enlace para completar el pago.');
-      } else {
-        setMsg(res.mensaje || 'Pago procesado');
-        setPagar(null);
-        load();
+      // Pago en linea: abrir link de Wompi
+      if (!cfg.wompi_link) {
+        setError('No hay link de pago configurado.');
+        setGuardando(false);
+        return;
       }
-    } catch (e) { setError(e?.response?.data?.error || 'Error al pagar'); } finally { setGuardando(false); }
+      Linking.openURL(cfg.wompi_link);
+      setMsg('Se abrió el enlace de pago de Wompi.');
+    } catch (e) { setError('No se pudo procesar el pago'); } finally { setGuardando(false); }
   };
 
   if (loading) return <View style={[s.center, { backgroundColor: c.background }]}><ActivityIndicator color={c.accent} /></View>;
@@ -96,15 +93,14 @@ export default function SuscripcionScreen({ navigation }) {
           <Text style={[s.meta, { color: c.textSecondary }]}>Elige el método de pago</Text>
           <View style={s.methods}>
             <TouchableOpacity style={[s.method, { backgroundColor: metodo === 'pse' ? c.accent : c.input, borderColor: c.border }]} onPress={() => setMetodo('pse')}>
-              <Ionicons name="business" size={16} color={metodo === 'pse' ? '#fff' : c.textSecondary} />
-              <Text style={{ color: metodo === 'pse' ? '#fff' : c.textSecondary }}>PSE</Text>
+              <Ionicons name="card" size={16} color={metodo === 'pse' ? '#fff' : c.textSecondary} />
+              <Text style={{ color: metodo === 'pse' ? '#fff' : c.textSecondary }}>Pagar en línea</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[s.method, { backgroundColor: metodo === 'whatsapp' ? c.accent : c.input, borderColor: c.border }]} onPress={() => setMetodo('whatsapp')}>
               <Ionicons name="logo-whatsapp" size={16} color={metodo === 'whatsapp' ? '#fff' : c.textSecondary} />
               <Text style={{ color: metodo === 'whatsapp' ? '#fff' : c.textSecondary }}>WhatsApp</Text>
             </TouchableOpacity>
           </View>
-          <TextInput style={[s.input, { backgroundColor: c.input, borderColor: c.border, color: c.text }]} placeholder="Documento (CC) para PSE" placeholderTextColor={c.placeholder} value={documento} onChangeText={setDocumento} keyboardType="numeric" />
           {msg ? <Text style={[s.msg, { color: c.success }]}>{msg}</Text> : null}
           {error ? <Text style={s.error}>{error}</Text> : null}
           <TouchableOpacity style={[s.btn, { backgroundColor: c.primary }]} onPress={pagarPlan} disabled={guardando}>

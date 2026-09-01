@@ -638,7 +638,8 @@ def sembrar_datos_iniciales(conexion):
             ("moneda", "COP", "Moneda base"),
             ("dias_alerta_contrato", "30", "Dias antes de vencimiento para alertar"),
             ("dias_alerta_pago", "3", "Dias antes de vencimiento de pago"),
-            ("whatsapp_numero", "", "Numero de WhatsApp para organizar pagos (ej. 573001234567)"),
+            ("whatsapp_numero", "573156652423", "Numero de WhatsApp para organizar pagos"),
+            ("wompi_link", "https://checkout.wompi.co/l/VPOS_jKycIe", "Link de pago de Wompi"),
         ]:
             conexion.execute("INSERT INTO configuracion (clave, valor, descripcion) VALUES (?,?,?)", (clave, valor, desc))
         print("[OK] Configuracion base creada")

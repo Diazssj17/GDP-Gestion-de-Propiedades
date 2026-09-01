@@ -368,6 +368,17 @@ def whatsapp_numero():
     return jsonify({"numero": num})
 
 
+# --- Configuracion de pagos (whatsapp + link wompi) ---
+@app.route("/api/pagos/config")
+def pagos_config():
+    def _cfg(clave):
+        f = query_one("SELECT valor FROM configuracion WHERE clave=?", (clave,))
+        return f["valor"] if f else ""
+    num = os.environ.get("WHATSAPP_NUMERO", "") or _cfg("whatsapp_numero")
+    link = os.environ.get("WOMPI_LINK", "") or _cfg("wompi_link")
+    return jsonify({"whatsapp": num, "wompi_link": link})
+
+
 # --- Registro publico (elige plan) ---
 @app.route("/api/register", methods=["POST"])
 def register():
