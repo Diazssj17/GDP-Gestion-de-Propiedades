@@ -10,9 +10,14 @@
     "android": {
       "package": "com.gdp.gestionpropiedades"
     },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
     "plugins": [
       "expo-secure-store",
-      "expo-image-picker"
+      "expo-image-picker",
+      "@react-native-community/datetimepicker"
     ]
   }
 }

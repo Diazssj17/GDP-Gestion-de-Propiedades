@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import * as SecureStore from 'expo-secure-store';
+import storage from '../utils/storage';
 import client, { api } from '../api/client';
 
 const AuthContext = createContext({ user: null, token: null, plan: null, loading: true, login: () => {}, logout: () => {} });
@@ -13,14 +13,14 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     (async () => {
       try {
-        const tok = await SecureStore.getItemAsync('gdp_token');
+        const tok = await storage.getItem('gdp_token');
         if (tok) {
           setToken(tok);
           const res = await api.me();
           if (res.usuario) { setUser(res.usuario); setPlan(res.plan || null); }
         }
       } catch (e) {
-        await SecureStore.deleteItemAsync('gdp_token');
+        await storage.removeItem('gdp_token');
         setToken(null);
         setUser(null);
       } finally {
@@ -32,7 +32,7 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     const res = await client.post('/api/login', { email, password });
     const { token: tok, usuario } = res.data;
-    await SecureStore.setItemAsync('gdp_token', tok);
+    await storage.setItem('gdp_token', tok);
     setToken(tok);
     setUser(usuario);
     try { const me = await api.me(); if (me.plan) setPlan(me.plan); } catch {}
@@ -41,7 +41,7 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try { await client.post('/api/logout'); } catch {}
-    await SecureStore.deleteItemAsync('gdp_token');
+    await storage.removeItem('gdp_token');
     setToken(null);
     setUser(null);
     setPlan(null);

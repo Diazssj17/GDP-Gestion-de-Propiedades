@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Image } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
+import { pickPhoto } from '../utils/files';
 import Picker from '../components/Picker';
 
 const TIPOS = [
@@ -42,10 +42,8 @@ export default function NuevoMantenimientoScreen({ navigation }) {
   }, [propiedadId]);
 
   const tomarFoto = async () => {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) return setError('Permiso de cámara denegado');
-    const res = await ImagePicker.launchCameraAsync({ base64: true, quality: 0.5 });
-    if (!res.canceled) setFoto(res.assets[0]);
+    const fotoRes = await pickPhoto();
+    if (fotoRes) setFoto(fotoRes);
   };
 
   const guardar = async () => {

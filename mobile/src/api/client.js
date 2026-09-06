@@ -1,5 +1,5 @@
 import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
+import storage from '../utils/storage';
 
 // Cambia esta URL por la de tu backend en producción (Render) o local
 // Para probar en celular físico usa tu IP local: http://192.168.x.x:5001
@@ -14,7 +14,7 @@ const client = axios.create({
 });
 
 client.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync('gdp_token');
+  const token = await storage.getItem('gdp_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });

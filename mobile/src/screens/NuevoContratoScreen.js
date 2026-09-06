@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
+import { assetToBase64 } from '../utils/files';
 import Picker from '../components/Picker';
 import DateField from '../components/DateField';
 
@@ -63,7 +63,7 @@ export default function NuevoContratoScreen({ navigation }) {
     if (res.canceled || !res.assets?.length) return;
     const asset = res.assets[0];
     try {
-      const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+      const base64 = await assetToBase64(asset);
       const mime = asset.mimeType || 'application/pdf';
       setDocumentos(prev => [...prev, { name: asset.name, tipo: tipoDoc, base64: `data:${mime};base64,${base64}` }]);
     } catch (e) { setError('No se pudo leer el documento'); }

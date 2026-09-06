@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import storage from '../utils/storage';
 import { light, dark } from '../theme';
 
 const ThemeContext = createContext({ theme: light, isDark: false, toggle: () => {}, setDark: () => {} });
@@ -12,18 +12,18 @@ export function ThemeProvider({ children }) {
   const theme = isDark ? dark : light;
 
   useEffect(() => {
-    SecureStore.getItemAsync('gdp_theme').then(v => setMode(v === 'dark' || v === 'light' ? v : null));
+    storage.getItem('gdp_theme').then(v => setMode(v === 'dark' || v === 'light' ? v : null));
   }, []);
 
   const toggle = () => {
     const next = isDark ? 'light' : 'dark';
     setMode(next);
-    SecureStore.setItemAsync('gdp_theme', next);
+    storage.setItem('gdp_theme', next);
   };
   const setDark = (v) => {
     const m = v ? 'dark' : 'light';
     setMode(m);
-    SecureStore.setItemAsync('gdp_theme', m);
+    storage.setItem('gdp_theme', m);
   };
 
   const value = useMemo(() => ({ theme, isDark, toggle, setDark }), [theme, isDark]);

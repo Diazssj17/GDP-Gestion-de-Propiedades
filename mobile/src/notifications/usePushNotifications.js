@@ -1,20 +1,20 @@
 import { useEffect } from 'react';
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { api } from '../api/client';
 
-// Configurar comportamiento de la notificacion
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
-
 export function usePushNotifications() {
   useEffect(() => {
+    if (Platform.OS === 'web') return;
     let mounted = true;
+    let Notifications;
+    try { Notifications = require('expo-notifications'); } catch { return; }
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
     (async () => {
       try {
         if (Platform.OS === 'android') {
