@@ -1,11 +1,9 @@
 import axios from 'axios';
 import storage from '../utils/storage';
 
-// Cambia esta URL por la de tu backend en producción (Render) o local
+// URL del backend. Se configura con la variable EXPO_PUBLIC_API_URL (ver .env.example).
 // Para probar en celular físico usa tu IP local: http://192.168.x.x:5001
-export const BASE_URL = 'http://192.168.1.2:5001'; // IP local (celular físico en misma WiFi)
-// export const BASE_URL = 'http://10.0.2.2:5001'; // emulador Android
-// export const BASE_URL = 'https://gdp-gestion-propiedades.onrender.com';
+export const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.2:5001';
 
 const client = axios.create({
   baseURL: BASE_URL,
