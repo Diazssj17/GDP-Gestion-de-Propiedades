@@ -22,7 +22,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 
-from flask import Flask, jsonify, request, g
+from flask import Flask, jsonify, request, g, make_response
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from database import get_db, crear_tablas, UPLOAD_FOLDER
@@ -73,10 +73,34 @@ SECURITY_HEADERS = {
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
 }
 
+# CORS (requerido por la app web; la app movil no lo necesita)
+CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
+
+def _apply_cors(resp):
+    if not CORS_ORIGINS:
+        return resp
+    origin = request.headers.get("Origin", "")
+    if "*" in CORS_ORIGINS:
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+    elif origin in CORS_ORIGINS:
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Vary"] = "Origin"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    resp.headers["Access-Control-Max-Age"] = "86400"
+    return resp
+
+@app.before_request
+def cors_preflight():
+    if request.method == "OPTIONS":
+        resp = make_response()
+        return _apply_cors(resp), 204
+
 @app.after_request
 def add_security_headers(resp):
     for k, v in SECURITY_HEADERS.items():
         resp.headers[k] = v
+    _apply_cors(resp)
     # Auditoria (ISO 27001 A.12.4): registrar peticiones de escritura en /api/
     try:
         if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.path.startswith("/api/"):
