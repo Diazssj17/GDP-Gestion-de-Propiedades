@@ -26,9 +26,6 @@ function Root() {
 export default function App() {
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      document.documentElement.style.height = 'auto';
-      document.documentElement.style.overflow = 'auto';
-      document.body.style.height = 'auto';
       document.body.style.overflow = 'auto';
     }
   }, []);
