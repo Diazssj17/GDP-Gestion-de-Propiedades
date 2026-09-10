@@ -264,7 +264,7 @@ export default function AppNavigator() {
 
 const styles = StyleSheet.create({
   webRow: { flexDirection: 'row', flex: 1 },
-  sidebar: { width: 240, borderRightWidth: 1, paddingTop: 20, paddingBottom: 16 },
+  sidebar: { width: 240, borderRightWidth: 1, paddingTop: 20, paddingBottom: 16, ...(Platform.OS === 'web' ? { position: 'fixed', top: 0, left: 0, bottom: 0 } : {}) },
   brand: { fontSize: 22, fontWeight: '900', paddingHorizontal: 20, letterSpacing: 0.5 },
   brandSub: { fontSize: 12, paddingHorizontal: 20, marginTop: 2, marginBottom: 18 },
   navScroll: { flex: 1 },
@@ -273,5 +273,5 @@ const styles = StyleSheet.create({
   sidebarFooter: { borderTopWidth: 1, paddingTop: 12, paddingHorizontal: 16 },
   userName: { fontSize: 13, fontWeight: '700', marginBottom: 6 },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
-  webContent: { flex: 1 },
+  webContent: { flex: 1, ...(Platform.OS === 'web' ? { marginLeft: 240 } : {}) },
 });

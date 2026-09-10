@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
@@ -49,7 +49,8 @@ export default function RegisterScreen({ navigation }) {
   );
 
   return (
-    <ScrollView style={[s.container, { backgroundColor: c.background }]} contentContainerStyle={{ paddingBottom: 40 }}>
+    <ScrollView style={[s.container, { backgroundColor: c.background }]} contentContainerStyle={{ paddingBottom: 40, flexGrow: 1 }}>
+      <View style={Platform.OS === 'web' ? s.webInner : null}>
       <Text style={[s.title, { color: c.text }]}>Crear cuenta</Text>
       <Text style={[s.sub, { color: c.textSecondary }]}>Elige el plan que mejor se adapte a ti</Text>
 
@@ -81,11 +82,13 @@ export default function RegisterScreen({ navigation }) {
       <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 12 }}>
         <Text style={{ color: c.accent, textAlign: 'center' }}>Ya tengo cuenta — Iniciar sesión</Text>
       </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
 const s = StyleSheet.create({
   container: { flex: 1, padding: 20 },
+  webInner: { width: '100%', maxWidth: 640, alignSelf: 'center' },
   title: { fontSize: 24, fontWeight: '900' },
   sub: { fontSize: 12, marginBottom: 20 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, marginBottom: 12 },

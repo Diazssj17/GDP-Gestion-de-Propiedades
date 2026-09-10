@@ -8,11 +8,23 @@ import LegalScreen from '../screens/LegalScreen';
 
 const Stack = createStackNavigator();
 
+const linking = {
+  prefixes: [],
+  config: {
+    screens: {
+      Login: 'login',
+      Registro: 'registro',
+      Recuperar: 'recuperar',
+      Legal: 'legal',
+    },
+  },
+};
+
 export default function AuthStack() {
   const { theme } = useTheme();
   const navTheme = { ...(theme.dark ? DarkTheme : DefaultTheme), colors: { ...(theme.dark ? DarkTheme : DefaultTheme).colors, primary: theme.colors.accent, background: theme.colors.background, card: theme.colors.card, text: theme.colors.text, border: theme.colors.border } };
   return (
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer theme={navTheme} linking={linking}>
       <Stack.Navigator screenOptions={{ headerStyle: { backgroundColor: theme.colors.card }, headerTintColor: theme.colors.text, headerTitleStyle: { fontWeight: '700' } }}>
         <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Registro" component={RegisterScreen} options={{ title: '' }} />
