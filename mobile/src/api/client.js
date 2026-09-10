@@ -27,6 +27,7 @@ export const api = {
   restablecer: (token, password) => client.post('/api/restablecer', { token, password }).then(r => r.data),
   pagarPlan: (data) => client.post('/api/pagos/plan', data).then(r => r.data),
   estadoPago: (ref) => client.get(`/api/pagos/plan/${ref}`).then(r => r.data),
+  pseBancos: () => client.get('/api/pagos/bancos').then(r => r.data),
   whatsapp: () => client.get('/api/whatsapp').then(r => r.data),
   pagosConfig: () => client.get('/api/pagos/config').then(r => r.data),
   alertas: () => client.get('/api/alertas').then(r => r.data),

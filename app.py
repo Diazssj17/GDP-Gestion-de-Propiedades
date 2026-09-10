@@ -16,6 +16,8 @@ import time
 import base64
 import re
 import json
+import hashlib
+import hmac
 import smtplib
 import requests
 from email.mime.text import MIMEText
@@ -468,6 +470,29 @@ def pagos_config():
     return jsonify({"whatsapp": num, "wompi_link": link})
 
 
+# --- Listado de bancos PSE (Wompi, con public key) ---
+_bancos_cache = {"data": [], "ts": 0}
+
+@app.route("/api/pagos/bancos")
+def pse_bancos():
+    now = time.time()
+    if _bancos_cache["data"] and now - _bancos_cache["ts"] < 3600:
+        return jsonify({"bancos": _bancos_cache["data"]})
+    base, public, _ = _wompi_env()
+    if not public:
+        return jsonify({"bancos": []})
+    try:
+        r = requests.get(f"{base}/pse/financial_institutions", headers={"Authorization": f"Bearer {public}"}, timeout=20)
+        if r.status_code == 200:
+            bancos = r.json().get("data", [])
+            _bancos_cache["data"] = bancos
+            _bancos_cache["ts"] = now
+            return jsonify({"bancos": bancos})
+    except Exception:
+        pass
+    return jsonify({"bancos": []})
+
+
 # --- Registro publico (elige plan) ---
 @app.route("/api/register", methods=["POST"])
 def register():
@@ -733,22 +758,29 @@ def pagar_plan():
         return jsonify({"error": "No se pudo crear el pago", "detalle": resp}), 502
 
     # PSE
+    user_type = 1 if data.get("user_type") == "juridica" else 0
+    legal_id = (data.get("user_legal_id") or "").strip()
+    banco = (data.get("banco") or "").strip()
+    telefono = (data.get("telefono") or user.get("telefono") or "").strip()
+    nombre_completo = (data.get("nombre_completo") or user.get("nombre") or "").strip()
     payload = {
         "acceptance_token": aceptacion,
-        "accept_personal_auth": personal,
         "amount_in_cents": monto_cents,
         "currency": "COP",
         "customer_email": user["email"],
         "reference": referencia,
-        "payment_method": {"type": "PSE", "user_type": "0", "user_legal_id_type": "CC", "user_legal_id": data.get("user_legal_id", ""), "financial_institution_code": data.get("banco", "1007"), "payment_description": f"Plan {plan['nombre']}"},
+        "customer_data": {"phone_number": telefono, "full_name": nombre_completo},
+        "payment_method": {"type": "PSE", "user_type": user_type, "user_legal_id_type": "CC", "user_legal_id": legal_id, "financial_institution_code": banco, "payment_description": f"Plan {plan['nombre']}"[:64]},
         "redirect_url": data.get("redirect_url") or f"{BASE_URL}/api/pagos/plan/{referencia}/estado",
     }
     code, resp = _wompi_privado("POST", "/transactions", payload)
     if code in (200, 201):
-        wompi_id = resp.get("data", {}).get("id", "")
+        d = resp.get("data", {})
+        wompi_id = d.get("id", "")
+        async_url = d.get("payment_method", {}).get("extra", {}).get("async_payment_url", "")
         g.db.execute("UPDATE transacciones SET wompi_id=? WHERE referencia=?", (wompi_id, referencia))
         g.db.commit()
-        return jsonify({"ok": True, "referencia": referencia, "wompi_id": wompi_id, "estado": "pendiente"}), 201
+        return jsonify({"ok": True, "referencia": referencia, "wompi_id": wompi_id, "estado": "pendiente", "async_payment_url": async_url}), 201
     return jsonify({"error": "No se pudo crear el pago", "detalle": resp}), 502
 
 
@@ -757,33 +789,68 @@ def estado_pago(referencia):
     tr = query_one("SELECT * FROM transacciones WHERE referencia=?", (referencia,))
     if not tr:
         return jsonify({"error": "Transaccion no existe"}), 404
+    async_url = ""
     # Consultar estado en Wompi si hay wompi_id y aun pendiente
     if tr["estado"] == "pendiente" and tr["wompi_id"] and _wompi_disponible():
         code, resp = _wompi_privado("GET", f"/transactions/{tr['wompi_id']}")
         if code == 200:
-            est = resp.get("data", {}).get("status", "")
+            d = resp.get("data", {})
+            est = d.get("status", "")
+            async_url = d.get("payment_method", {}).get("extra", {}).get("async_payment_url", "")
             if est == "APPROVED":
                 _confirmar_pago(referencia)
             elif est in ("DECLINED", "ERROR", "VOIDED"):
                 g.db.execute("UPDATE transacciones SET estado='rechazada' WHERE referencia=?", (referencia,))
                 g.db.commit()
     tr = query_one("SELECT id, referencia, wompi_id, monto_cents, metodo, estado, plan_id, fecha FROM transacciones WHERE referencia=?", (referencia,))
-    return jsonify(row_to_dict(tr))
+    d = row_to_dict(tr)
+    d["async_payment_url"] = async_url
+    return jsonify(d)
+
+
+def _get_nested(d, path):
+    """Resuelve una ruta con puntos (ej. 'transaction.id') dentro de un dict."""
+    cur = d
+    for k in path.split("."):
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(k)
+    return cur
 
 
 @app.route("/api/webhooks/wompi", methods=["POST"])
 def webhook_wompi():
     data = request.get_json(silent=True) or {}
     event = data.get("event", "")
-    sig = request.headers.get("X-Event-Checksum", "")
-    # (Opcional) verificar firma si WOMPI_WEBHOOK_SECRET esta configurado
-    if WOMPI_WEBHOOK_SECRET:
-        import hashlib
-        comp = hashlib.sha256(f"{data.get('data',{}).get('transaction',{}).get('id','')}{WOMPI_WEBHOOK_SECRET}".encode()).hexdigest()
-        # Wompi usa un checksum distinto; aqui solo registramos. En produccion validar segun doc.
     trans = data.get("data", {}).get("transaction", {})
     referencia = trans.get("reference", "")
     estado = trans.get("status", "")
+
+    # Verificar firma (ISO 27001): SHA256 de properties + timestamp + secreto de eventos
+    if WOMPI_WEBHOOK_SECRET:
+        sig = data.get("signature", {})
+        properties = sig.get("properties", [])
+        timestamp = data.get("timestamp")
+        checksum = (request.headers.get("X-Event-Checksum", "") or sig.get("checksum", "") or "").strip().lower()
+        partes = []
+        valido = bool(properties)
+        payload = data.get("data", {})
+        for prop in properties:
+            val = _get_nested(payload, prop)
+            if val is None:
+                valido = False
+                break
+            partes.append(str(val))
+        if valido and timestamp is not None:
+            cadena = "".join(partes) + str(timestamp) + WOMPI_WEBHOOK_SECRET
+            calc = hashlib.sha256(cadena.encode("utf-8")).hexdigest().lower()
+            if not hmac.compare_digest(calc, checksum):
+                _log_evento("webhook_firma_invalida", detalles=f"event={event} ref={referencia}")
+                return jsonify({"ok": False, "error": "firma invalida"}), 401
+        else:
+            _log_evento("webhook_firma_invalida", detalles=f"event={event} sin properties/timestamp")
+            return jsonify({"ok": False, "error": "firma invalida"}), 401
+
     if referencia and estado == "APPROVED":
         _confirmar_pago(referencia, wompi_id=trans.get("id", ""))
         _log_evento("webhook_wompi_aprobado", detalles=f"ref={referencia}")
